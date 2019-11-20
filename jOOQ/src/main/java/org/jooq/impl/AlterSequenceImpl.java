@@ -43,6 +43,8 @@ import static org.jooq.Clause.ALTER_SEQUENCE_RESTART;
 import static org.jooq.Clause.ALTER_SEQUENCE_SEQUENCE;
 // ...
 // ...
+// ...
+// ...
 import static org.jooq.SQLDialect.CUBRID;
 // ...
 import static org.jooq.SQLDialect.DERBY;
@@ -52,6 +54,7 @@ import static org.jooq.SQLDialect.HSQLDB;
 // ...
 import static org.jooq.SQLDialect.MARIADB;
 // ...
+import static org.jooq.SQLDialect.POSTGRES;
 // ...
 // ...
 import static org.jooq.impl.Keywords.K_ALTER;
@@ -78,6 +81,7 @@ import static org.jooq.impl.Tools.endTryCatch;
 import java.util.Set;
 
 import org.jooq.AlterSequenceFinalStep;
+import org.jooq.AlterSequenceFlagsStep;
 import org.jooq.AlterSequenceStep;
 import org.jooq.Clause;
 import org.jooq.Configuration;
@@ -104,6 +108,7 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
     private static final Set<SQLDialect> NO_SUPPORT_IF_EXISTS = SQLDialect.supportedBy(CUBRID, DERBY, FIREBIRD);
     private static final Set<SQLDialect> NO_SEPARATOR         = SQLDialect.supportedBy(CUBRID, MARIADB);
     private static final Set<SQLDialect> NO_SUPPORT_CACHE     = SQLDialect.supportedBy(DERBY, FIREBIRD, HSQLDB);
+    private static final Set<SQLDialect> EMULATE_NO_CACHE  = SQLDialect.supportedBy(POSTGRES);
 
 
 
@@ -114,14 +119,14 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
     private Sequence<?>                  renameTo;
     private boolean                      restart;
     private Field<?>                     restartWith;
-    private Field<? extends T>           startWith;
-    private Field<? extends T>           incrementBy;
-    private Field<? extends T>           minvalue;
+    private Field<? extends Number>      startWith;
+    private Field<? extends Number>      incrementBy;
+    private Field<? extends Number>      minvalue;
     private boolean                      noMinvalue;
-    private Field<? extends T>           maxvalue;
+    private Field<? extends Number>      maxvalue;
     private boolean                      noMaxvalue;
     private Boolean                      cycle;
-    private Field<? extends T>           cache;
+    private Field<? extends Number>      cache;
     private boolean                      noCache;
 
     AlterSequenceImpl(Configuration configuration, Sequence<T> sequence) {
@@ -135,28 +140,37 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
         this.ifExists = ifExists;
     }
 
-    final Sequence<?> $sequence() { return sequence; }
-    final boolean     $ifExists() { return ifExists; }
-    final Sequence<?> $renameTo() { return renameTo; }
+    final Sequence<?>             $sequence()    { return sequence; }
+    final boolean                 $ifExists()    { return ifExists; }
+    final Sequence<?>             $renameTo()    { return renameTo; }
+    final Field<? extends Number> $startWith()   { return startWith; }
+    final Field<? extends Number> $incrementBy() { return incrementBy; }
+    final Field<? extends Number> $minvalue()    { return minvalue; }
+    final boolean                 $noMinvalue()  { return noMinvalue; }
+    final Field<? extends Number> $maxvalue()    { return maxvalue; }
+    final boolean                 $noMaxvalue()  { return noMaxvalue; }
+    final Boolean                 $cycle()       { return cycle; }
+    final Field<? extends Number> $cache()       { return cache; }
+    final boolean                 $noCache()     { return noCache; }
 
     // ------------------------------------------------------------------------
     // XXX: DSL API
     // ------------------------------------------------------------------------
 
     @Override
-    public final AlterSequenceStep<T> restart() {
+    public final AlterSequenceFlagsStep restart() {
         restart = true;
         restartWith = null;
         return this;
     }
 
     @Override
-    public final AlterSequenceStep<T> restartWith(T value) {
+    public final AlterSequenceFlagsStep restartWith(Number value) {
         return restartWith(Tools.field(value, sequence.getDataType()));
     }
 
     @Override
-    public final AlterSequenceStep<T> restartWith(Field<? extends T> value) {
+    public final AlterSequenceFlagsStep restartWith(Field<? extends Number> value) {
         restart = false;
         restartWith = value;
         return this;
@@ -179,91 +193,91 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
     }
 
     @Override
-    public AlterSequenceStep<T> startWith(T value) {
+    public AlterSequenceFlagsStep startWith(Number value) {
         return startWith(Tools.field(value, sequence.getDataType()));
     }
 
     @Override
-    public AlterSequenceStep<T> startWith(Field<? extends T> value) {
+    public AlterSequenceFlagsStep startWith(Field<? extends Number> value) {
         startWith = value;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> incrementBy(T value) {
+    public AlterSequenceFlagsStep incrementBy(Number value) {
         return incrementBy(Tools.field(value, sequence.getDataType()));
     }
 
     @Override
-    public AlterSequenceStep<T> incrementBy(Field<? extends T> value) {
+    public AlterSequenceFlagsStep incrementBy(Field<? extends Number> value) {
         incrementBy = value;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> minvalue(T value) {
+    public AlterSequenceFlagsStep minvalue(Number value) {
         return minvalue(Tools.field(value, sequence.getDataType()));
     }
 
     @Override
-    public AlterSequenceStep<T> minvalue(Field<? extends T> value) {
+    public AlterSequenceFlagsStep minvalue(Field<? extends Number> value) {
         minvalue = value;
         noMinvalue = false;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> noMinvalue() {
+    public AlterSequenceFlagsStep noMinvalue() {
         minvalue = null;
         noMinvalue = true;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> maxvalue(T value) {
+    public AlterSequenceFlagsStep maxvalue(Number value) {
         return maxvalue(Tools.field(value, sequence.getDataType()));
     }
 
     @Override
-    public AlterSequenceStep<T> maxvalue(Field<? extends T> value) {
+    public AlterSequenceFlagsStep maxvalue(Field<? extends Number> value) {
         maxvalue = value;
         noMaxvalue = false;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> noMaxvalue() {
+    public AlterSequenceFlagsStep noMaxvalue() {
         maxvalue = null;
         noMaxvalue = true;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> cycle() {
+    public AlterSequenceFlagsStep cycle() {
         cycle = true;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> noCycle() {
+    public AlterSequenceFlagsStep noCycle() {
         cycle = false;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> cache(T value) {
+    public AlterSequenceFlagsStep cache(Number value) {
         return cache(Tools.field(value, sequence.getDataType()));
     }
 
     @Override
-    public AlterSequenceStep<T> cache(Field<? extends T> value) {
+    public AlterSequenceFlagsStep cache(Field<? extends Number> value) {
         cache = value;
         noCache = false;
         return this;
     }
 
     @Override
-    public AlterSequenceStep<T> noCache() {
+    public AlterSequenceFlagsStep noCache() {
         cache = null;
         noCache = true;
         return this;
@@ -274,7 +288,7 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
     // ------------------------------------------------------------------------
 
     private final boolean supportsIfExists(Context<?> ctx) {
-        return !NO_SUPPORT_IF_EXISTS.contains(ctx.family());
+        return !NO_SUPPORT_IF_EXISTS.contains(ctx.dialect());
     }
 
     @Override
@@ -399,7 +413,7 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
         else {
             ctx.start(ALTER_SEQUENCE_RESTART);
 
-            String noSeparator = NO_SEPARATOR.contains(ctx.family()) ? "" : " ";
+            String noSeparator = NO_SEPARATOR.contains(ctx.dialect()) ? "" : " ";
 
             if (incrementBy != null) {
                 ctx.sql(' ').visit(K_INCREMENT_BY)
@@ -438,12 +452,14 @@ final class AlterSequenceImpl<T extends Number> extends AbstractRowCountQuery im
                        .sql(' ').visit(restartWith);
             }
 
-            if (!NO_SUPPORT_CACHE.contains(ctx.family()))
+            if (!NO_SUPPORT_CACHE.contains(ctx.dialect()))
                 if (cache != null)
                     ctx.sql(' ').visit(K_CACHE).sql(' ').visit(cache);
                 else if (noCache)
-                    // TODO: Postgres requires CACHE 1 here
-                    ctx.sql(' ').visit(K_NO).sql(noSeparator).visit(K_CACHE);
+                    if (EMULATE_NO_CACHE.contains(ctx.dialect()))
+                        ctx.sql(' ').visit(K_CACHE).sql(' ').sql(1);
+                    else
+                        ctx.sql(' ').visit(K_NO).sql(noSeparator).visit(K_CACHE);
 
             if (Boolean.TRUE.equals(cycle))
                 ctx.sql(' ').visit(K_CYCLE);

@@ -61,10 +61,13 @@ import org.jooq.Condition;
 import org.jooq.Configuration;
 import org.jooq.Constraint;
 import org.jooq.DataType;
+import org.jooq.Delete;
 import org.jooq.Field;
 import org.jooq.FieldOrConstraint;
 import org.jooq.ForeignKey;
 import org.jooq.Index;
+import org.jooq.Insert;
+import org.jooq.Merge;
 import org.jooq.Meta;
 import org.jooq.Name;
 import org.jooq.Name.Quoted;
@@ -81,6 +84,7 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.TableOptions.TableType;
 import org.jooq.UniqueKey;
+import org.jooq.Update;
 import org.jooq.exception.DataAccessException;
 import org.jooq.exception.DataDefinitionException;
 import org.jooq.impl.ConstraintImpl.Action;
@@ -126,7 +130,8 @@ final class DDLInterpreter {
     // -------------------------------------------------------------------------
 
     final void accept(Query query) {
-        log.info(query);
+        if (log.isDebugEnabled())
+            log.debug(query);
 
         if (query instanceof CreateSchemaImpl)
             accept0((CreateSchemaImpl) query);
@@ -141,6 +146,8 @@ final class DDLInterpreter {
             accept0((AlterTableImpl) query);
         else if (query instanceof DropTableImpl)
             accept0((DropTableImpl) query);
+        else if (query instanceof TruncateImpl)
+            accept0((TruncateImpl<?>) query);
 
         else if (query instanceof CreateViewImpl)
             accept0((CreateViewImpl<?>) query);
@@ -165,6 +172,18 @@ final class DDLInterpreter {
 
         else if (query instanceof CommentOnImpl)
             accept0((CommentOnImpl) query);
+
+        // The interpreter cannot handle DML statements. We're ignoring these for now.
+        else if (query instanceof Select)
+            ;
+        else if (query instanceof Update)
+            ;
+        else if (query instanceof Insert)
+            ;
+        else if (query instanceof Delete)
+            ;
+        else if (query instanceof Merge)
+            ;
 
         else
             throw unsupportedQuery(query);
@@ -203,7 +222,7 @@ final class DDLInterpreter {
             return;
         }
         else
-            throw new UnsupportedOperationException(query.getSQL());
+            throw unsupportedQuery(query);
     }
 
     private final void accept0(DropSchemaImpl query) {
@@ -591,6 +610,18 @@ final class DDLInterpreter {
         drop(schema.tables, existing, query.$cascade());
     }
 
+    private final void accept0(TruncateImpl<?> query) {
+        Table<?> table = query.$table();
+
+        MutableSchema schema = getSchema(table.getSchema());
+        MutableTable existing = schema.table(table);
+
+        if (existing == null)
+            throw tableNotExists(table);
+        else if (!existing.options.type().isTable())
+            throw objectNotTable(table);
+    }
+
     private final void accept0(CreateViewImpl<?> query) {
         Table<?> table = query.$view();
         MutableSchema schema = getSchema(table.getSchema());
@@ -693,8 +724,37 @@ final class DDLInterpreter {
 
             existing.name = (UnqualifiedName) renameTo.getUnqualifiedName();
         }
-        else
-            throw unsupportedQuery(query);
+        else {
+            Field<? extends Number> startWith = query.$startWith();
+            if (startWith != null)
+                existing.startWith = startWith;
+
+            Field<? extends Number> incrementBy = query.$incrementBy();
+            if (incrementBy != null)
+                existing.incrementBy = incrementBy;
+
+            Field<? extends Number> minvalue = query.$minvalue();
+            if (minvalue != null)
+                existing.minValue = minvalue;
+            else if (query.$noMinvalue())
+                existing.minValue = null;
+
+            Field<? extends Number> maxvalue = query.$maxvalue();
+            if (maxvalue != null)
+                existing.maxValue = maxvalue;
+            else if (query.$noMaxvalue())
+                existing.maxValue = null;
+
+            Boolean cycle = query.$cycle();
+            if (cycle != null)
+                existing.cycle = cycle;
+
+            Field<? extends Number> cache = query.$cache();
+            if (cache != null)
+                existing.cache = cache;
+            else if (query.$noCache())
+                existing.cache = null;
+        }
     }
 
     private final void accept0(DropSequenceImpl query) {
@@ -1357,13 +1417,13 @@ final class DDLInterpreter {
 
     @SuppressWarnings("unused")
     private static final class MutableSequence extends MutableNamed {
-        MutableSchema schema;
-        Field<?>      startWith;
-        Field<?>      incrementBy;
-        Field<?>      minValue;
-        Field<?>      maxValue;
-        boolean       cycle;
-        Field<?>      cache;
+        MutableSchema           schema;
+        Field<? extends Number> startWith;
+        Field<? extends Number> incrementBy;
+        Field<? extends Number> minValue;
+        Field<? extends Number> maxValue;
+        boolean                 cycle;
+        Field<? extends Number> cache;
 
         MutableSequence(UnqualifiedName name, MutableSchema schema) {
             super(name);
@@ -1376,10 +1436,12 @@ final class DDLInterpreter {
             @SuppressWarnings("unchecked")
             InterpretedSequence(Schema schema) {
                 super(MutableSequence.this.name, schema, BIGINT, false,
-                    (Field<Long>) startWith, (Field<Long>) incrementBy, (Field<Long>) minValue, (Field<Long>) maxValue, cycle, (Field<Long>) cache);
-
-                // [#7752] TODO: Pass additional flags like START WITH to
-                //         SequenceImpl when this is ready.
+                    (Field<Long>) startWith,
+                    (Field<Long>) incrementBy,
+                    (Field<Long>) minValue,
+                    (Field<Long>) maxValue,
+                    cycle,
+                    (Field<Long>) cache);
             }
         }
     }

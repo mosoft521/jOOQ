@@ -451,6 +451,7 @@ import org.jooq.Select;
 import org.jooq.SelectFieldOrAsterisk;
 import org.jooq.Sequence;
 import org.jooq.SortField;
+import org.jooq.SortOrder;
 import org.jooq.Statement;
 import org.jooq.Table;
 import org.jooq.TableField;
@@ -3150,7 +3151,7 @@ final class ParserImpl implements Parser {
                 if (parseKeywordIf(ctx, "CONSTRAINT"))
                     constraint = constraint(parseIdentifier(ctx));
 
-                if (parseKeywordIf(ctx, "PRIMARY KEY")) {
+                if (parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx)) {
                     if (primary)
                         throw ctx.exception("Duplicate primary key specification");
 
@@ -3336,7 +3337,10 @@ final class ParserImpl implements Parser {
                         inlineConstraint = constraint(parseIdentifier(ctx));
 
                     if (!unique) {
-                        if (parseKeywordIf(ctx, "PRIMARY KEY")) {
+                        if (parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx)) {
+                            if (!parseKeywordIf(ctx, "CLUSTERED"))
+                                parseKeywordIf(ctx, "NONCLUSTERED");
+
                             constraints.add(inlineConstraint == null
                                 ? primaryKey(fieldName)
                                 : inlineConstraint.primaryKey(fieldName));
@@ -3588,6 +3592,16 @@ final class ParserImpl implements Parser {
             return storageStep;
     }
 
+    private static boolean parsePrimaryKeyClusteredNonClusteredKeywordIf(ParserContext ctx) {
+        if (!parseKeywordIf(ctx, "PRIMARY KEY"))
+            return false;
+
+        if (!parseKeywordIf(ctx, "CLUSTERED"))
+            parseKeywordIf(ctx, "NONCLUSTERED");
+
+        return true;
+    }
+
     private static final DDLQuery parseCreateType(ParserContext ctx) {
         Name name = parseIdentifier(ctx);
         parseKeyword(ctx, "AS ENUM");
@@ -3621,10 +3635,7 @@ final class ParserImpl implements Parser {
 
     private static final Constraint parsePrimaryKeySpecification(ParserContext ctx, ConstraintTypeStep constraint) {
         parseUsingBtreeOrHashIf(ctx);
-
-        parse(ctx, '(');
-        Field<?>[] fieldNames = parseFieldNames(ctx).toArray(EMPTY_FIELD);
-        parse(ctx, ')');
+        Field<?>[] fieldNames = parseKeyColumnList(ctx);
 
         Constraint e = constraint == null
             ? primaryKey(fieldNames)
@@ -3637,10 +3648,7 @@ final class ParserImpl implements Parser {
 
     private static final Constraint parseUniqueSpecification(ParserContext ctx, ConstraintTypeStep constraint) {
         parseUsingBtreeOrHashIf(ctx);
-
-        parse(ctx, '(');
-        Field<?>[] fieldNames = parseFieldNames(ctx).toArray(EMPTY_FIELD);
-        parse(ctx, ')');
+        Field<?>[] fieldNames = parseKeyColumnList(ctx);
 
         Constraint e = constraint == null
             ? unique(fieldNames)
@@ -3649,6 +3657,24 @@ final class ParserImpl implements Parser {
         parseUsingBtreeOrHashIf(ctx);
         parseConstraintStateIf(ctx);
         return e;
+    }
+
+    private static Field<?>[] parseKeyColumnList(ParserContext ctx) {
+        parse(ctx, '(');
+        SortField<?>[] fieldExpressions = parseSortSpecification(ctx).toArray(EMPTY_SORTFIELD);
+        parse(ctx, ')');
+
+        Field<?>[] fieldNames = new Field[fieldExpressions.length];
+
+        for (int i = 0; i < fieldExpressions.length; i++)
+            if (fieldExpressions[i].getOrder() != SortOrder.DESC)
+                fieldNames[i] = ((SortFieldImpl<?>) fieldExpressions[i]).getField();
+
+            // [#7899] TODO: Support this in jOOQ
+            else
+                throw ctx.notImplemented("DESC sorting in constraints");
+
+        return fieldNames;
     }
 
     private static final Constraint parseCheckSpecification(ParserContext ctx, ConstraintTypeStep constraint) {
@@ -3791,7 +3817,9 @@ final class ParserImpl implements Parser {
             case 'D':
                 if (parseKeywordIf(ctx, "DROP")) {
                     if (parseKeywordIf(ctx, "CONSTRAINT")) {
-                        return parseCascadeRestrictIf(ctx, s1.dropConstraint(parseIdentifier(ctx)));
+                        return parseCascadeRestrictIf(ctx, parseKeywordIf(ctx, "IF EXISTS")
+                            ? s1.dropConstraintIfExists(parseIdentifier(ctx))
+                            : s1.dropConstraint(parseIdentifier(ctx)));
                     }
                     else if (parseKeywordIf(ctx, "UNIQUE")) {
                         return parseCascadeRestrictIf(ctx, s1.dropUnique(parseIdentifier(ctx)));
@@ -3805,8 +3833,7 @@ final class ParserImpl implements Parser {
                     }
                     else if (parseKeywordIf(ctx, "INDEX")
                           || parseKeywordIf(ctx, "KEY")) {
-                        Name index = parseIdentifier(ctx);
-                        return ctx.dsl.dropIndex(index).on(tableName);
+                        return ctx.dsl.dropIndex(parseIdentifier(ctx)).on(tableName);
                     }
                     else {
                         parseKeywordIf(ctx, "COLUMN");
@@ -3965,7 +3992,7 @@ final class ParserImpl implements Parser {
         if (parseKeywordIf(ctx, "CONSTRAINT"))
             constraint = constraint(parseIdentifier(ctx));
 
-        if (parseKeywordIf(ctx, "PRIMARY KEY"))
+        if (parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx))
             return parsePrimaryKeySpecification(ctx, constraint);
         else if (parseKeywordIf(ctx, "UNIQUE")) {
             if (!parseKeywordIf(ctx, "KEY"))

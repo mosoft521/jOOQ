@@ -238,6 +238,7 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
     private final Table<?>                   table;
     private final boolean                    ifExists;
     private boolean                          ifExistsColumn;
+    private boolean                          ifExistsConstraint;
     private boolean                          ifNotExistsColumn;
     private Comment                          comment;
     private Table<?>                         renameTo;
@@ -279,30 +280,32 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
         this.ifExists = ifExists;
     }
 
-    final Table<?>       $table()                  { return table; }
-    final boolean        $ifExists()               { return ifExists; }
-    final boolean        $ifExistsColumn()         { return ifExistsColumn; }
-    final boolean        $ifNotExistsColumn()      { return ifNotExistsColumn; }
-    final Field<?>       $addColumn()              { return addColumn; }
-    final DataType<?>    $addColumnType()          { return addColumnType; }
-    final Constraint     $addConstraint()          { return addConstraint; }
-    final boolean        $addFirst()               { return addFirst; }
-    final Field<?>       $addBefore()              { return addBefore; }
-    final Field<?>       $addAfter()               { return addAfter; }
-    final Field<?>       $alterColumn()            { return alterColumn; }
-    final Nullability    $alterColumnNullability() { return alterColumnNullability; }
-    final DataType<?>    $alterColumnType()        { return alterColumnType; }
-    final Field<?>       $alterColumnDefault()     { return alterColumnDefault; }
-    final boolean        $alterColumnDropDefault() { return alterColumnDropDefault; }
-    final Table<?>       $renameTo()               { return renameTo; }
-    final Field<?>       $renameColumn()           { return renameColumn; }
-    final Field<?>       $renameColumnTo()         { return renameColumnTo; }
-    final Constraint     $renameConstraint()       { return renameConstraint; }
-    final Constraint     $renameConstraintTo()     { return renameConstraintTo; }
-    final List<Field<?>> $dropColumns()            { return dropColumns; }
-    final Cascade        $dropCascade()            { return dropCascade; }
-    final Constraint     $dropConstraint()         { return dropConstraint; }
-    final ConstraintType $dropConstraintType()     { return dropConstraintType; }
+    final Table<?>                 $table()                  { return table; }
+    final boolean                  $ifExists()               { return ifExists; }
+    final boolean                  $ifExistsColumn()         { return ifExistsColumn; }
+    final boolean                  $ifExistsConstraint()     { return ifExistsConstraint; }
+    final boolean                  $ifNotExistsColumn()      { return ifNotExistsColumn; }
+    final List<FieldOrConstraint>  $add()                    { return add; }
+    final Field<?>                 $addColumn()              { return addColumn; }
+    final DataType<?>              $addColumnType()          { return addColumnType; }
+    final Constraint               $addConstraint()          { return addConstraint; }
+    final boolean                  $addFirst()               { return addFirst; }
+    final Field<?>                 $addBefore()              { return addBefore; }
+    final Field<?>                 $addAfter()               { return addAfter; }
+    final Field<?>                 $alterColumn()            { return alterColumn; }
+    final Nullability              $alterColumnNullability() { return alterColumnNullability; }
+    final DataType<?>              $alterColumnType()        { return alterColumnType; }
+    final Field<?>                 $alterColumnDefault()     { return alterColumnDefault; }
+    final boolean                  $alterColumnDropDefault() { return alterColumnDropDefault; }
+    final Table<?>                 $renameTo()               { return renameTo; }
+    final Field<?>                 $renameColumn()           { return renameColumn; }
+    final Field<?>                 $renameColumnTo()         { return renameColumnTo; }
+    final Constraint               $renameConstraint()       { return renameConstraint; }
+    final Constraint               $renameConstraintTo()     { return renameConstraintTo; }
+    final List<Field<?>>           $dropColumns()            { return dropColumns; }
+    final Cascade                  $dropCascade()            { return dropCascade; }
+    final Constraint               $dropConstraint()         { return dropConstraint; }
+    final ConstraintType           $dropConstraintType()     { return dropConstraintType; }
 
     // ------------------------------------------------------------------------
     // XXX: DSL API
@@ -443,6 +446,17 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
 
     @Override
     public final AlterTableImpl add(Collection<? extends FieldOrConstraint> fields) {
+
+        // [#9570] Better portability of single item ADD statements
+        if (fields.size() == 1) {
+            FieldOrConstraint first = fields.iterator().next();
+
+            if (first instanceof Field)
+                return add((Field<?>) first);
+            else if (first instanceof Constraint)
+                return add((Constraint) first);
+        }
+
         add = new QueryPartList<>(fields);
         return this;
     }
@@ -802,6 +816,27 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
     @Override
     public final AlterTableImpl dropConstraint(String constraint) {
         return dropConstraint(DSL.constraint(constraint));
+    }
+
+    @Override
+    public final AlterTableImpl dropIfExists(Constraint constraint) {
+        ifExistsConstraint = true;
+        return drop(constraint);
+    }
+
+    @Override
+    public final AlterTableImpl dropConstraintIfExists(Constraint constraint) {
+        return dropIfExists(constraint);
+    }
+
+    @Override
+    public final AlterTableImpl dropConstraintIfExists(Name constraint) {
+        return dropIfExists(constraint(constraint));
+    }
+
+    @Override
+    public final AlterTableImpl dropConstraintIfExists(String constraint) {
+        return dropIfExists(constraint(constraint));
     }
 
     @Override
@@ -1204,6 +1239,7 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
             ctx.end(ALTER_TABLE_RENAME_CONSTRAINT);
         }
         else if (add != null) {
+            boolean qualify = ctx.qualify();
             boolean multiAdd = REQUIRE_REPEAT_ADD_ON_MULTI_ALTER.contains(ctx.family());
             boolean parens = !multiAdd;
             boolean comma = true;
@@ -1229,7 +1265,9 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
                         ctx.sql(comma ? "," : "").formatSeparator();
 
                 FieldOrConstraint part = add.get(i);
-                ctx.visit(part);
+                ctx.qualify(false)
+                   .visit(part)
+                   .qualify(qualify);
 
                 if (part instanceof Field) {
                     ctx.sql(' ');
@@ -1542,16 +1580,22 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
             ctx.start(ALTER_TABLE_DROP);
             ctx.data(DATA_CONSTRAINT_REFERENCE, true);
 
-            if (dropConstraintType == FOREIGN_KEY && NO_SUPPORT_DROP_CONSTRAINT.contains(family))
+            if (dropConstraintType == FOREIGN_KEY && NO_SUPPORT_DROP_CONSTRAINT.contains(family)) {
                 ctx.visit(K_DROP).sql(' ').visit(K_FOREIGN_KEY)
                    .sql(' ')
                    .visit(dropConstraint);
-            else if (dropConstraintType == PRIMARY_KEY && NO_SUPPORT_DROP_CONSTRAINT.contains(family))
+            }
+            else if (dropConstraintType == PRIMARY_KEY && NO_SUPPORT_DROP_CONSTRAINT.contains(family)) {
                 ctx.visit(K_DROP).sql(' ').visit(K_PRIMARY_KEY);
-            else
-                ctx.visit(K_DROP_CONSTRAINT)
-                   .sql(' ')
-                   .visit(dropConstraint);
+            }
+            else {
+                ctx.visit(K_DROP_CONSTRAINT).sql(' ');
+
+                if (ifExistsConstraint)
+                    ctx.visit(K_IF_EXISTS).sql(' ');
+
+                ctx.visit(dropConstraint);
+            }
 
             acceptCascade(ctx);
 

@@ -38,52 +38,28 @@
 package org.jooq;
 
 /**
+ * A check constraint.
+ * <p>
+ * Instances of this type cannot be created directly. They are available from
+ * generated code.
+ *
+ * @param <R> The <code>CHECK</code>'s owner table record
  * @author Lukas Eder
  */
-public enum DDLFlag {
+public interface Check<R extends Record> extends Named {
 
     /**
-     * Whether <code>CREATE SCHEMA</code> statements should be generated.
+     * The <code>Key</code>'s owner table
      */
-    SCHEMA,
+    Table<R> getTable();
 
     /**
-     * Whether <code>CREATE TABLE</code> statements should be generated.
+     * The <code>CHECK</code> constraint's condition.
      */
-    TABLE,
+    Condition condition();
 
     /**
-     * Whether <code>PRIMARY KEY</code> constraints should be generated.
+     * Get this <code>CHECK</code> as a formal {@link Constraint} specification.
      */
-    PRIMARY_KEY,
-
-    /**
-     * Whether <code>UNIQUE</code> constraints should be generated.
-     */
-    UNIQUE,
-
-    /**
-     * Whether <code>FOREIGN KEY</code> constraints should be generated.
-     */
-    FOREIGN_KEY,
-
-    /**
-     * Whether <code>CHECK</code> constraints should be generated.
-     */
-    CHECK,
-
-    /**
-     * Whether <code>INDEX</code> definitions should be generated.
-     */
-    INDEX,
-
-    /**
-     * Whether <code>SEQUENCE</code> statements should be generated.
-     */
-    SEQUENCE,
-
-    /**
-     * Whether <code>COMMENT</code> statements should be generated.
-     */
-    COMMENT,
+    Constraint constraint();
 }

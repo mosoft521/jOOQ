@@ -55,11 +55,14 @@ import java.util.List;
 import java.util.Map;
 
 import org.jooq.Catalog;
+import org.jooq.Check;
 import org.jooq.Comment;
+import org.jooq.Condition;
 import org.jooq.Configuration;
 import org.jooq.Constraint;
 import org.jooq.DataType;
 import org.jooq.Field;
+import org.jooq.FieldOrConstraint;
 import org.jooq.ForeignKey;
 import org.jooq.Index;
 import org.jooq.Meta;
@@ -248,6 +251,8 @@ final class DDLInterpreter {
                 mt.uniqueKeys.add(new MutableUniqueKey((UnqualifiedName) impl.getUnqualifiedName(), mt, mt.fields(impl.$unique(), true)));
             else if (impl.$foreignKey() != null)
                 addForeignKey(getSchema(impl.$referencesTable().getSchema(), false), mt, impl);
+            else if (impl.$check() != null)
+                mt.checks.add(new MutableCheck((UnqualifiedName) impl.getUnqualifiedName(), mt, impl.$check()));
             else
                 throw unsupportedQuery(query);
         }
@@ -383,9 +388,30 @@ final class DDLInterpreter {
         else if (!existing.options.type().isTable())
             throw objectNotTable(table);
 
-        // TODO: Multi-add statements
+        if (query.$add() != null) {
+            for (FieldOrConstraint fc : query.$add())
+                if (fc instanceof Field && existing.field((Field<?>) fc) != null)
+                    throw fieldAlreadyExists((Field<?>) fc);
+                else if (fc instanceof Constraint && !fc.getUnqualifiedName().empty() && existing.constraint((Constraint) fc) != null)
+                    throw constraintAlreadyExists((Constraint) fc);
 
-        if (query.$addColumn() != null) {
+            for (FieldOrConstraint fc : query.$add())
+                if (fc instanceof Field)
+
+                    // TODO: FIRST, BEFORE, AFTER
+                    existing.fields.add(new MutableField((UnqualifiedName) fc.getUnqualifiedName(), existing, ((Field<?>) fc).getDataType()));
+                else if (fc instanceof Constraint)
+                    addConstraint(query, (ConstraintImpl) fc, schema, existing);
+                else
+                    throw unsupportedQuery(query);
+        }
+        else if (query.$addColumn() != null) {
+            if (existing.field(query.$addColumn()) != null)
+                if (!query.$ifNotExistsColumn())
+                    throw fieldAlreadyExists(query.$addColumn());
+                else
+                    return;
+
             if (query.$addFirst())
                 existing.fields.add(0, new MutableField((UnqualifiedName) query.$addColumn().getUnqualifiedName(), existing, query.$addColumnType()));
             else if (query.$addBefore() != null)
@@ -396,33 +422,16 @@ final class DDLInterpreter {
                 existing.fields.add(new MutableField((UnqualifiedName) query.$addColumn().getUnqualifiedName(), existing, query.$addColumnType()));
         }
         else if (query.$addConstraint() != null) {
-            ConstraintImpl impl = (ConstraintImpl) query.$addConstraint();
-
-            if (existing.constraint(impl) != null)
-                throw constraintAlreadyExists(impl);
-            else if (impl.$primaryKey() != null)
-
-                // TODO: More nuanced error messages would be good, in general.
-                if (existing.primaryKey != null)
-                    throw constraintAlreadyExists(impl);
-                else
-                    existing.primaryKey = new MutableUniqueKey((UnqualifiedName) impl.getUnqualifiedName(), existing, existing.fields(impl.$primaryKey(), true));
-            else if (impl.$unique() != null)
-                existing.uniqueKeys.add(new MutableUniqueKey((UnqualifiedName) impl.getUnqualifiedName(), existing, existing.fields(impl.$unique(), true)));
-            else if (impl.$foreignKey() != null)
-                addForeignKey(schema, existing, impl);
-            else
-                throw unsupportedQuery(query);
+            addConstraint(query, (ConstraintImpl) query.$addConstraint(), schema, existing);
         }
         else if (query.$alterColumn() != null) {
             MutableField existingField = existing.field(query.$alterColumn());
 
-            if (existingField == null) {
+            if (existingField == null)
                 if (!query.$ifExistsColumn())
                     throw columnNotExists(query.$alterColumn());
-
-                return;
-            }
+                else
+                    return;
 
             if (query.$alterColumnNullability() != null)
                 existingField.type = existingField.type.nullability(query.$alterColumnNullability());
@@ -449,7 +458,7 @@ final class DDLInterpreter {
                 mf.name = (UnqualifiedName) query.$renameColumnTo().getUnqualifiedName();
         }
         else if (query.$renameConstraint() != null) {
-            MutableKey mk = existing.constraint(query.$renameConstraint());
+            MutableNamed mk = existing.constraint(query.$renameConstraint());
 
             if (mk == null)
                 throw constraintNotExists(query.$renameConstraint());
@@ -491,6 +500,17 @@ final class DDLInterpreter {
                         }
                     }
 
+                    Iterator<MutableCheck> chks = existing.checks.iterator();
+
+                    while (chks.hasNext()) {
+                        MutableCheck check = chks.next();
+
+                        if (check.name.equals(impl.getUnqualifiedName())) {
+                            chks.remove();
+                            break removal;
+                        }
+                    }
+
                     if (existing.primaryKey != null) {
                         if (existing.primaryKey.name.equals(impl.getUnqualifiedName())) {
                             cascade(existing.primaryKey, null, query.$dropCascade());
@@ -500,7 +520,8 @@ final class DDLInterpreter {
                     }
                 }
 
-                throw constraintNotExists(query.$dropConstraint());
+                if (!query.$ifExistsConstraint())
+                    throw constraintNotExists(query.$dropConstraint());
             }
         }
         else if (query.$dropConstraintType() == PRIMARY_KEY) {
@@ -509,6 +530,26 @@ final class DDLInterpreter {
             else
                 throw primaryKeyNotExists();
         }
+        else
+            throw unsupportedQuery(query);
+    }
+
+    private final void addConstraint(Query query, ConstraintImpl impl, MutableSchema schema, MutableTable existing) {
+        if (!impl.getUnqualifiedName().empty() && existing.constraint(impl) != null)
+            throw constraintAlreadyExists(impl);
+        else if (impl.$primaryKey() != null)
+
+            // TODO: More nuanced error messages would be good, in general.
+            if (existing.primaryKey != null)
+                throw constraintAlreadyExists(impl);
+            else
+                existing.primaryKey = new MutableUniqueKey((UnqualifiedName) impl.getUnqualifiedName(), existing, existing.fields(impl.$primaryKey(), true));
+        else if (impl.$unique() != null)
+            existing.uniqueKeys.add(new MutableUniqueKey((UnqualifiedName) impl.getUnqualifiedName(), existing, existing.fields(impl.$unique(), true)));
+        else if (impl.$foreignKey() != null)
+            addForeignKey(schema, existing, impl);
+        else if (impl.$check() != null)
+            existing.checks.add(new MutableCheck((UnqualifiedName) impl.getUnqualifiedName(), existing, impl.$check()));
         else
             throw unsupportedQuery(query);
     }
@@ -820,7 +861,7 @@ final class DDLInterpreter {
     }
 
     private static final DataDefinitionException fieldAlreadyExists(Field<?> field) {
-        return new DataDefinitionException("Field does not exist: " + field.getQualifiedName());
+        return new DataDefinitionException("Field already exists: " + field.getQualifiedName());
     }
 
     // -------------------------------------------------------------------------
@@ -1115,6 +1156,7 @@ final class DDLInterpreter {
         MutableUniqueKey        primaryKey;
         List<MutableUniqueKey>  uniqueKeys  = new ArrayList<>();
         List<MutableForeignKey> foreignkeys = new ArrayList<>();
+        List<MutableCheck>      checks      = new ArrayList<>();
         List<MutableIndex>      indexes     = new ArrayList<>();
         TableOptions            options;
 
@@ -1126,7 +1168,7 @@ final class DDLInterpreter {
             schema.tables.add(this);
         }
 
-        final MutableKey constraint(Constraint constraint) {
+        final MutableNamed constraint(Constraint constraint) {
             for (MutableForeignKey mfk : foreignkeys)
                 if (mfk.name.equals(constraint.getUnqualifiedName()))
                     return mfk;
@@ -1134,6 +1176,10 @@ final class DDLInterpreter {
             for (MutableUniqueKey muk : uniqueKeys)
                 if (muk.name.equals(constraint.getUnqualifiedName()))
                     return muk;
+
+            for (MutableCheck chk : checks)
+                if (chk.name.equals(constraint.getUnqualifiedName()))
+                    return chk;
 
             if (primaryKey != null && primaryKey.name.equals(constraint.getUnqualifiedName()))
                 return primaryKey;
@@ -1242,6 +1288,16 @@ final class DDLInterpreter {
             }
 
             @Override
+            public List<Check<Record>> getChecks() {
+                List<Check<Record>> result = new ArrayList<>();
+
+                for (MutableCheck c : MutableTable.this.checks)
+                    result.add(new CheckImpl<>(this, c.name, c.condition));
+
+                return result;
+            }
+
+            @Override
             public final List<Index> getIndexes() {
                 List<Index> result = new ArrayList<>();
 
@@ -1340,6 +1396,18 @@ final class DDLInterpreter {
         }
     }
 
+    private static final class MutableCheck extends MutableNamed {
+        MutableTable table;
+        Condition    condition;
+
+        MutableCheck(UnqualifiedName name, MutableTable table, Condition condition) {
+            super(name);
+
+            this.table = table;
+            this.condition = condition;
+        }
+    }
+
     private static final class MutableUniqueKey extends MutableKey {
         MutableUniqueKey(UnqualifiedName name, MutableTable keyTable, List<MutableField> keyFields) {
             super(name, keyTable, keyFields);
@@ -1403,5 +1471,10 @@ final class DDLInterpreter {
             this.field = field;
             this.sort = sort;
         }
+    }
+
+    @Override
+    public String toString() {
+        return meta().toString();
     }
 }

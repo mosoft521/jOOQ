@@ -48,17 +48,16 @@ import java.util.Map.Entry;
 
 import org.jooq.DDLQuery;
 import org.jooq.DSLContext;
-import org.jooq.Internal;
 import org.jooq.Meta;
 import org.jooq.Queries;
 import org.jooq.Query;
 import org.jooq.Source;
 import org.jooq.Version;
+import org.jooq.exception.DataDefinitionException;
 
 /**
  * @author Lukas Eder
  */
-@Internal
 final class VersionImpl implements Version {
 
     private final DSLContext   ctx;
@@ -101,6 +100,16 @@ final class VersionImpl implements Version {
     }
 
     @Override
+    public final Version root() {
+        VersionImpl result = this;
+
+        while (result.parents.size() > 0)
+            result = result.parents.get(0).version;
+
+        return result;
+    }
+
+    @Override
     public final Version apply(String newId, Query... diff) {
         return apply(newId, ctx.queries(diff));
     }
@@ -123,6 +132,7 @@ final class VersionImpl implements Version {
     @Override
     public final Queries migrateFrom(Version version) {
         VersionImpl subgraph = subgraphTo((VersionImpl) version);
+
 
 
 
@@ -181,7 +191,6 @@ final class VersionImpl implements Version {
 
         return result;
     }
-
 
 
 

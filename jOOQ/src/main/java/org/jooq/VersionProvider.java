@@ -35,30 +35,26 @@
  *
  *
  */
-package org.jooq.impl;
+package org.jooq;
 
-import java.sql.DatabaseMetaData;
-
-import org.jooq.Configuration;
-import org.jooq.Meta;
-import org.jooq.MetaProvider;
+import java.util.Set;
 
 /**
- * A default implementation of the {@link MetaProvider} SPI, which provides meta
- * data information based on the JDBC {@link DatabaseMetaData} API.
+ * An SPI that allows for providing a graph of versions.
  *
  * @author Lukas Eder
  */
-public class DefaultMetaProvider implements MetaProvider {
+@Internal // TODO This SPI is still being worked on and might change incompatibly
+public interface VersionProvider {
 
-    private final Configuration configuration;
-
-    public DefaultMetaProvider(Configuration configuration) {
-        this.configuration = configuration;
-    }
-
-    @Override
-    public Meta provide() {
-        return new MetaImpl(configuration, null);
-    }
+    /**
+     * Provide a set of versions relevant to a migration.
+     * <p>
+     * This can include the entire set of known versions, or a subset thereof.
+     * There is no requirement to provide a fully connected graph, although
+     * {@link Version#migrateFrom(Version)} and other operations are undefined
+     * if two versions do not have a common ancestor.
+     */
+    @Internal // TODO Produce a better type than Set<Version>. Possibly, #current() can be obtained from the new result type.
+    Set<Version> provide();
 }

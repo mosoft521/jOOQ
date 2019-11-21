@@ -35,30 +35,13 @@
  *
  *
  */
-package org.jooq.impl;
-
-import java.sql.DatabaseMetaData;
-
-import org.jooq.Configuration;
-import org.jooq.Meta;
-import org.jooq.MetaProvider;
+package org.jooq;
 
 /**
- * A default implementation of the {@link MetaProvider} SPI, which provides meta
- * data information based on the JDBC {@link DatabaseMetaData} API.
+ * The result of a {@link Migration}.
  *
  * @author Lukas Eder
  */
-public class DefaultMetaProvider implements MetaProvider {
+public interface MigrationResult {
 
-    private final Configuration configuration;
-
-    public DefaultMetaProvider(Configuration configuration) {
-        this.configuration = configuration;
-    }
-
-    @Override
-    public Meta provide() {
-        return new MetaImpl(configuration, null);
-    }
 }

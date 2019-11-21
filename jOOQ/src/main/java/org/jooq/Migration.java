@@ -35,30 +35,37 @@
  *
  *
  */
-package org.jooq.impl;
+package org.jooq;
 
-import java.sql.DatabaseMetaData;
-
-import org.jooq.Configuration;
-import org.jooq.Meta;
-import org.jooq.MetaProvider;
+import org.jooq.exception.DataDefinitionException;
 
 /**
- * A default implementation of the {@link MetaProvider} SPI, which provides meta
- * data information based on the JDBC {@link DatabaseMetaData} API.
+ * An executable migration between two {@link Version} instances.
  *
  * @author Lukas Eder
  */
-public class DefaultMetaProvider implements MetaProvider {
+public interface Migration extends Scope {
 
-    private final Configuration configuration;
+    /**
+     * The version that is being migrated from.
+     */
+    Version from();
 
-    public DefaultMetaProvider(Configuration configuration) {
-        this.configuration = configuration;
-    }
+    /**
+     * The version that is being migrated to.
+     */
+    Version to();
 
-    @Override
-    public Meta provide() {
-        return new MetaImpl(configuration, null);
-    }
+    /**
+     * The queries that are executed by the migration.
+     */
+    Queries queries();
+
+    /**
+     * Apply the migration.
+     *
+     * @throws DataDefinitionException When something went wrong during the
+     *             application of the migration.
+     */
+    MigrationResult migrate() throws DataDefinitionException;
 }

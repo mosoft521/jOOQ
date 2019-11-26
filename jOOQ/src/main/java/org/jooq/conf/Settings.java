@@ -103,6 +103,12 @@ public class Settings
     protected InvocationOrder transactionListenerEndInvocationOrder = InvocationOrder.DEFAULT;
     @XmlElement(defaultValue = "DEFAULT")
     @XmlSchemaType(name = "string")
+    protected InvocationOrder migrationListenerStartInvocationOrder = InvocationOrder.DEFAULT;
+    @XmlElement(defaultValue = "DEFAULT")
+    @XmlSchemaType(name = "string")
+    protected InvocationOrder migrationListenerEndInvocationOrder = InvocationOrder.DEFAULT;
+    @XmlElement(defaultValue = "DEFAULT")
+    @XmlSchemaType(name = "string")
     protected InvocationOrder visitListenerStartInvocationOrder = InvocationOrder.DEFAULT;
     @XmlElement(defaultValue = "DEFAULT")
     @XmlSchemaType(name = "string")
@@ -187,6 +193,9 @@ public class Settings
     @XmlElement(type = String.class, defaultValue = "DEFAULT")
     @XmlJavaTypeAdapter(SQLDialectAdapter.class)
     protected SQLDialect parseDialect;
+    @XmlElement(defaultValue = "DEFAULT")
+    @XmlSchemaType(name = "string")
+    protected ParseNameCase parseNameCase = ParseNameCase.DEFAULT;
     @XmlElement(defaultValue = "OFF")
     @XmlSchemaType(name = "string")
     protected ParseWithMetaLookups parseWithMetaLookups = ParseWithMetaLookups.OFF;
@@ -820,6 +829,38 @@ public class Settings
      */
     public void setTransactionListenerEndInvocationOrder(InvocationOrder value) {
         this.transactionListenerEndInvocationOrder = value;
+    }
+
+    /**
+     * The order of invocation for [action]start() methods registered {@link org.jooq.MigrationListener}s.
+     *
+     */
+    public InvocationOrder getMigrationListenerStartInvocationOrder() {
+        return migrationListenerStartInvocationOrder;
+    }
+
+    /**
+     * The order of invocation for [action]start() methods registered {@link org.jooq.MigrationListener}s.
+     *
+     */
+    public void setMigrationListenerStartInvocationOrder(InvocationOrder value) {
+        this.migrationListenerStartInvocationOrder = value;
+    }
+
+    /**
+     * The order of invocation for [action]end() methods registered {@link org.jooq.MigrationListener}s.
+     *
+     */
+    public InvocationOrder getMigrationListenerEndInvocationOrder() {
+        return migrationListenerEndInvocationOrder;
+    }
+
+    /**
+     * The order of invocation for [action]end() methods registered {@link org.jooq.MigrationListener}s.
+     *
+     */
+    public void setMigrationListenerEndInvocationOrder(InvocationOrder value) {
+        this.migrationListenerEndInvocationOrder = value;
     }
 
     /**
@@ -1586,6 +1627,22 @@ public class Settings
     }
 
     /**
+     * [#7337] The default name case for parsed identifiers.
+     *
+     */
+    public ParseNameCase getParseNameCase() {
+        return parseNameCase;
+    }
+
+    /**
+     * [#7337] The default name case for parsed identifiers.
+     *
+     */
+    public void setParseNameCase(ParseNameCase value) {
+        this.parseNameCase = value;
+    }
+
+    /**
      * [#7163] Whether the parser should perform meta lookups in the Configuration's MetaProvider.
      *
      */
@@ -1947,6 +2004,24 @@ public class Settings
     }
 
     /**
+     * The order of invocation for [action]start() methods registered {@link org.jooq.MigrationListener}s.
+     *
+     */
+    public Settings withMigrationListenerStartInvocationOrder(InvocationOrder value) {
+        setMigrationListenerStartInvocationOrder(value);
+        return this;
+    }
+
+    /**
+     * The order of invocation for [action]end() methods registered {@link org.jooq.MigrationListener}s.
+     *
+     */
+    public Settings withMigrationListenerEndInvocationOrder(InvocationOrder value) {
+        setMigrationListenerEndInvocationOrder(value);
+        return this;
+    }
+
+    /**
      * The order of invocation for [action]start() methods registered {@link org.jooq.VisitListener}s.
      *
      */
@@ -2208,6 +2283,15 @@ public class Settings
     }
 
     /**
+     * [#7337] The default name case for parsed identifiers.
+     *
+     */
+    public Settings withParseNameCase(ParseNameCase value) {
+        setParseNameCase(value);
+        return this;
+    }
+
+    /**
      * [#7163] Whether the parser should perform meta lookups in the Configuration's MetaProvider.
      *
      */
@@ -2306,6 +2390,8 @@ public class Settings
         builder.append("inlineThreshold", inlineThreshold);
         builder.append("transactionListenerStartInvocationOrder", transactionListenerStartInvocationOrder);
         builder.append("transactionListenerEndInvocationOrder", transactionListenerEndInvocationOrder);
+        builder.append("migrationListenerStartInvocationOrder", migrationListenerStartInvocationOrder);
+        builder.append("migrationListenerEndInvocationOrder", migrationListenerEndInvocationOrder);
         builder.append("visitListenerStartInvocationOrder", visitListenerStartInvocationOrder);
         builder.append("visitListenerEndInvocationOrder", visitListenerEndInvocationOrder);
         builder.append("recordListenerStartInvocationOrder", recordListenerStartInvocationOrder);
@@ -2343,6 +2429,7 @@ public class Settings
         builder.append("executeDeleteWithoutWhere", executeDeleteWithoutWhere);
         builder.append("interpreterDialect", interpreterDialect);
         builder.append("parseDialect", parseDialect);
+        builder.append("parseNameCase", parseNameCase);
         builder.append("parseWithMetaLookups", parseWithMetaLookups);
         builder.append("parseUnsupportedSyntax", parseUnsupportedSyntax);
         builder.append("parseUnknownFunctions", parseUnknownFunctions);
@@ -2602,6 +2689,24 @@ public class Settings
             }
         } else {
             if (!transactionListenerEndInvocationOrder.equals(other.transactionListenerEndInvocationOrder)) {
+                return false;
+            }
+        }
+        if (migrationListenerStartInvocationOrder == null) {
+            if (other.migrationListenerStartInvocationOrder!= null) {
+                return false;
+            }
+        } else {
+            if (!migrationListenerStartInvocationOrder.equals(other.migrationListenerStartInvocationOrder)) {
+                return false;
+            }
+        }
+        if (migrationListenerEndInvocationOrder == null) {
+            if (other.migrationListenerEndInvocationOrder!= null) {
+                return false;
+            }
+        } else {
+            if (!migrationListenerEndInvocationOrder.equals(other.migrationListenerEndInvocationOrder)) {
                 return false;
             }
         }
@@ -2938,6 +3043,15 @@ public class Settings
                 return false;
             }
         }
+        if (parseNameCase == null) {
+            if (other.parseNameCase!= null) {
+                return false;
+            }
+        } else {
+            if (!parseNameCase.equals(other.parseNameCase)) {
+                return false;
+            }
+        }
         if (parseWithMetaLookups == null) {
             if (other.parseWithMetaLookups!= null) {
                 return false;
@@ -3034,6 +3148,8 @@ public class Settings
         result = ((prime*result)+((inlineThreshold == null)? 0 :inlineThreshold.hashCode()));
         result = ((prime*result)+((transactionListenerStartInvocationOrder == null)? 0 :transactionListenerStartInvocationOrder.hashCode()));
         result = ((prime*result)+((transactionListenerEndInvocationOrder == null)? 0 :transactionListenerEndInvocationOrder.hashCode()));
+        result = ((prime*result)+((migrationListenerStartInvocationOrder == null)? 0 :migrationListenerStartInvocationOrder.hashCode()));
+        result = ((prime*result)+((migrationListenerEndInvocationOrder == null)? 0 :migrationListenerEndInvocationOrder.hashCode()));
         result = ((prime*result)+((visitListenerStartInvocationOrder == null)? 0 :visitListenerStartInvocationOrder.hashCode()));
         result = ((prime*result)+((visitListenerEndInvocationOrder == null)? 0 :visitListenerEndInvocationOrder.hashCode()));
         result = ((prime*result)+((recordListenerStartInvocationOrder == null)? 0 :recordListenerStartInvocationOrder.hashCode()));
@@ -3071,6 +3187,7 @@ public class Settings
         result = ((prime*result)+((executeDeleteWithoutWhere == null)? 0 :executeDeleteWithoutWhere.hashCode()));
         result = ((prime*result)+((interpreterDialect == null)? 0 :interpreterDialect.hashCode()));
         result = ((prime*result)+((parseDialect == null)? 0 :parseDialect.hashCode()));
+        result = ((prime*result)+((parseNameCase == null)? 0 :parseNameCase.hashCode()));
         result = ((prime*result)+((parseWithMetaLookups == null)? 0 :parseWithMetaLookups.hashCode()));
         result = ((prime*result)+((parseUnsupportedSyntax == null)? 0 :parseUnsupportedSyntax.hashCode()));
         result = ((prime*result)+((parseUnknownFunctions == null)? 0 :parseUnknownFunctions.hashCode()));

@@ -50,6 +50,7 @@ import static org.jooq.JoinType.JOIN;
 // ...
 import static org.jooq.conf.ParseWithMetaLookups.IGNORE_ON_FAILURE;
 import static org.jooq.conf.ParseWithMetaLookups.THROW_ON_FAILURE;
+import static org.jooq.conf.SettingsTools.renderLocale;
 import static org.jooq.impl.AbstractName.NO_NAME;
 import static org.jooq.impl.DSL.abs;
 import static org.jooq.impl.DSL.acos;
@@ -310,6 +311,7 @@ import static org.jooq.impl.Tools.EMPTY_NAME;
 import static org.jooq.impl.Tools.EMPTY_QUERYPART;
 import static org.jooq.impl.Tools.EMPTY_ROWN;
 import static org.jooq.impl.Tools.EMPTY_SORTFIELD;
+import static org.jooq.tools.StringUtils.defaultIfNull;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
@@ -484,6 +486,7 @@ import org.jooq.WindowSpecificationExcludeStep;
 import org.jooq.WindowSpecificationOrderByStep;
 import org.jooq.WindowSpecificationRowsAndStep;
 import org.jooq.WindowSpecificationRowsStep;
+import org.jooq.conf.ParseNameCase;
 import org.jooq.conf.ParseSearchSchema;
 import org.jooq.conf.ParseUnknownFunctions;
 import org.jooq.conf.ParseUnsupportedSyntax;
@@ -5972,6 +5975,8 @@ final class ParserImpl implements Parser {
                         return field;
                     else if (parseKeywordIf(ctx, "LEVEL"))
                         return level();
+                    else if ((field = parseFieldShlIf(ctx)) != null)
+                        return field;
 
                 if ((field = parseFieldLeastIf(ctx)) != null)
                     return field;
@@ -6103,6 +6108,8 @@ final class ParserImpl implements Parser {
                     else if ((field = parseFieldRandIf(ctx)) != null)
                         return field;
                     else if ((field = parseFieldRatioToReportIf(ctx)) != null)
+                        return field;
+                    else if ((field = parseFieldShrIf(ctx)) != null)
                         return field;
 
                 if (parseFunctionNameIf(ctx, "ROW"))
@@ -6341,7 +6348,7 @@ final class ParserImpl implements Parser {
     }
 
     private static final Field<?> parseFieldShlIf(ParserContext ctx) {
-        if (parseKeywordIf(ctx, "SHL") || parseKeywordIf(ctx, "SHIFTLEFT")) {
+        if (parseKeywordIf(ctx, "SHL") || parseKeywordIf(ctx, "SHIFTLEFT") || parseKeywordIf(ctx, "LSHIFT")) {
             parse(ctx, '(');
             Field<?> x = toField(ctx, parseNumericOp(ctx, N));
             parse(ctx, ',');
@@ -6355,7 +6362,7 @@ final class ParserImpl implements Parser {
     }
 
     private static final Field<?> parseFieldShrIf(ParserContext ctx) {
-        if (parseKeywordIf(ctx, "SHR") || parseKeywordIf(ctx, "SHIFTRIGHT")) {
+        if (parseKeywordIf(ctx, "SHR") || parseKeywordIf(ctx, "SHIFTRIGHT") || parseKeywordIf(ctx, "RSHIFT")) {
             parse(ctx, '(');
             Field<?> x = toField(ctx, parseNumericOp(ctx, N));
             parse(ctx, ',');
@@ -9197,6 +9204,33 @@ final class ParserImpl implements Parser {
 
         String result = ctx.substring(start, ctx.position());
 
+        switch (parseNameCase(ctx)) {
+            case LOWER_IF_UNQUOTED:
+                if (quoteEnd != 0)
+                    break;
+
+                // no-break
+
+            case LOWER:
+                result = result.toLowerCase(renderLocale(ctx.settings()));
+                break;
+
+            case UPPER_IF_UNQUOTED:
+                if (quoteEnd != 0)
+                    break;
+
+                // no-break
+            case UPPER:
+                result = result.toUpperCase(renderLocale(ctx.settings()));
+                break;
+
+            case AS_IS:
+            case DEFAULT:
+            default:
+                // Keep result
+                break;
+        }
+
         if (quoteEnd != 0) {
             if (ctx.character() != quoteEnd)
                 throw ctx.exception("Quoted identifier must terminate in " + quoteEnd);
@@ -9209,6 +9243,55 @@ final class ParserImpl implements Parser {
             parseWhitespaceIf(ctx);
             return DSL.unquotedName(result);
         }
+    }
+
+    private static final ParseNameCase parseNameCase(ParserContext ctx) {
+        ParseNameCase result = defaultIfNull(ctx.settings().getParseNameCase(), ParseNameCase.DEFAULT);
+
+        if (result == ParseNameCase.DEFAULT) {
+            switch (defaultIfNull(ctx.settings().getParseDialect(), ctx.family()).family()) {
+
+
+
+
+
+
+
+                case POSTGRES:
+                    return ParseNameCase.LOWER_IF_UNQUOTED;
+
+
+
+
+
+
+
+
+                case DERBY:
+                case FIREBIRD:
+                case H2:
+                case HSQLDB:
+                    return ParseNameCase.UPPER_IF_UNQUOTED;
+
+
+
+
+
+
+
+
+
+                case MYSQL:
+                case SQLITE:
+                    return ParseNameCase.AS_IS;
+
+                case DEFAULT:
+                default:
+                    // Keep default if we don't know the case
+            }
+        }
+
+        return result;
     }
 
     private static final char parseQuote(ParserContext ctx, boolean allowAposQuotes) {

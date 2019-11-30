@@ -40,6 +40,7 @@ package org.jooq.meta.h2;
 import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.inline;
 import static org.jooq.impl.DSL.name;
+import static org.jooq.impl.DSL.nullif;
 import static org.jooq.impl.DSL.one;
 import static org.jooq.impl.DSL.select;
 import static org.jooq.meta.h2.information_schema.tables.Columns.COLUMNS;
@@ -109,6 +110,8 @@ import org.jooq.util.h2.H2DataType;
  * @author Espen Stromsnes
  */
 public class H2Database extends AbstractDatabase {
+
+    private static final long DEFAULT_SEQUENCE_MAXVALUE = Long.MAX_VALUE;
 
     @Override
     protected DSLContext create0() {
@@ -384,7 +387,13 @@ public class H2Database extends AbstractDatabase {
 
         for (Record record : create().select(
                     Sequences.SEQUENCE_SCHEMA,
-                    Sequences.SEQUENCE_NAME)
+                    Sequences.SEQUENCE_NAME,
+                    Sequences.INCREMENT,
+                    Sequences.MIN_VALUE,
+                    nullif(Sequences.MAX_VALUE, inline(DEFAULT_SEQUENCE_MAXVALUE)).as(Sequences.MAX_VALUE),
+                    Sequences.IS_CYCLE,
+                    Sequences.CACHE
+                    )
                 .from(SEQUENCES)
                 .where(Sequences.SEQUENCE_SCHEMA.in(getInputSchemata()))
                 .and(Sequences.SEQUENCE_NAME.upper().notLike("SYSTEM!_SEQUENCE!_%", '!'))
@@ -404,7 +413,17 @@ public class H2Database extends AbstractDatabase {
                     H2DataType.BIGINT.getTypeName()
                 );
 
-                result.add(new DefaultSequenceDefinition(schema, name, type));
+                result.add(new DefaultSequenceDefinition(
+                    schema,
+                    name,
+                    type,
+                    null,
+                    null, // H2 doesn't support Postgres-style START WITH
+                    record.get(Sequences.INCREMENT),
+                    record.get(Sequences.MIN_VALUE),
+                    record.get(Sequences.MAX_VALUE),
+                    record.get(Sequences.IS_CYCLE),
+                    record.get(Sequences.CACHE)));
             }
         }
 

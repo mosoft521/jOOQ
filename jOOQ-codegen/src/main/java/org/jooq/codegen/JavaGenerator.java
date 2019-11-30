@@ -118,7 +118,6 @@ import org.jooq.impl.Internal;
 import org.jooq.impl.PackageImpl;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.SchemaImpl;
-import org.jooq.impl.SequenceImpl;
 import org.jooq.impl.TableImpl;
 import org.jooq.impl.TableRecordImpl;
 import org.jooq.impl.UDTImpl;
@@ -4248,7 +4247,7 @@ public class JavaGenerator extends AbstractGenerator {
 
             String separator = "  ";
             for (CheckConstraintDefinition c : cc) {
-                out.tab(3).println("%s%s.createCheck(this, %s.name(\"%s\"), \"%s\")", separator, Internal.class, DSL.class, c.getName(), c.getCheckClause().replace("\"", "\\\""));
+                out.tab(3).println("%s%s.createCheck(this, %s.name(\"%s\"), \"%s\")", separator, Internal.class, DSL.class, c.getName().replace("\"", "\\\""), c.getCheckClause().replace("\"", "\\\""));
                 separator = ", ";
             }
 
@@ -4625,9 +4624,37 @@ public class JavaGenerator extends AbstractGenerator {
                 out.tab(1).javadoc("The sequence <code>%s</code>", sequence.getQualifiedOutputName());
 
             if (scala)
-                out.tab(1).println("val %s : %s[%s] = new %s[%s](\"%s\", %s, %s)", seqId, Sequence.class, seqType, SequenceImpl.class, seqType, seqName, schemaId, typeRef);
+                out.tab(1).println("val %s : %s[%s] = %s.createSequence(\"%s\", %s, %s, %s, %s, %s, %s, %s, %s)",
+                    seqId,
+                    Sequence.class,
+                    seqType,
+                    Internal.class,
+                    seqName,
+                    schemaId,
+                    typeRef,
+                    sequence.getStartWith() != null ? sequence.getStartWith() + "L" : "null",
+                    sequence.getIncrementBy() != null ? sequence.getIncrementBy() + "L" : "null",
+                    sequence.getMinValue() != null ? sequence.getMinValue() + "L" : "null",
+                    sequence.getMaxValue() != null ? sequence.getMaxValue() + "L" : "null",
+                    sequence.getCycle(),
+                    sequence.getCache() != null ? sequence.getCache() + "L" : "null");
             else
-                out.tab(1).println("public static final %s<%s> %s = new %s<%s>(\"%s\", %s, %s);", Sequence.class, seqType, seqId, SequenceImpl.class, seqType, seqName, schemaId, typeRef);
+                out.tab(1).println("public static final %s<%s> %s = %s.<%s> createSequence(\"%s\", %s, %s, %s, %s, %s, %s, %s, %s);",
+                    Sequence.class,
+                    seqType,
+                    seqId,
+                    Internal.class,
+                    seqType,
+                    seqName,
+                    schemaId,
+                    typeRef,
+                    sequence.getStartWith() != null ? sequence.getStartWith() + "L" : "null",
+                    sequence.getIncrementBy() != null ? sequence.getIncrementBy() + "L" : "null",
+                    sequence.getMinValue() != null ? sequence.getMinValue() + "L" : "null",
+                    sequence.getMaxValue() != null ? sequence.getMaxValue() + "L" : "null",
+                    sequence.getCycle(),
+                    sequence.getCache() != null ? sequence.getCache() + "L" : "null"
+                );
         }
 
         out.println("}");

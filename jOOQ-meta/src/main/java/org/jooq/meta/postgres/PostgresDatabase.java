@@ -49,12 +49,17 @@ import static org.jooq.impl.DSL.max;
 import static org.jooq.impl.DSL.name;
 import static org.jooq.impl.DSL.noCondition;
 import static org.jooq.impl.DSL.not;
+import static org.jooq.impl.DSL.nullif;
 import static org.jooq.impl.DSL.one;
 import static org.jooq.impl.DSL.partitionBy;
+import static org.jooq.impl.DSL.power;
 import static org.jooq.impl.DSL.row;
 import static org.jooq.impl.DSL.rowNumber;
 import static org.jooq.impl.DSL.select;
 import static org.jooq.impl.DSL.when;
+import static org.jooq.impl.SQLDataType.BIGINT;
+import static org.jooq.impl.SQLDataType.BOOLEAN;
+import static org.jooq.impl.SQLDataType.NUMERIC;
 import static org.jooq.impl.SQLDataType.VARCHAR;
 import static org.jooq.meta.postgres.information_schema.Tables.ATTRIBUTES;
 import static org.jooq.meta.postgres.information_schema.Tables.CHECK_CONSTRAINTS;
@@ -331,6 +336,10 @@ public class PostgresDatabase extends AbstractDatabase {
         TableConstraints tc = TABLE_CONSTRAINTS.as("tc");
         CheckConstraints cc = CHECK_CONSTRAINTS.as("cc");
 
+        PgNamespace pn = PG_NAMESPACE.as("pn");
+        PgClass pt = PG_CLASS.as("pt");
+        PgConstraint pc = PG_CONSTRAINT.as("pc");
+
         for (Record record : create()
                 .select(
                     tc.TABLE_SCHEMA,
@@ -342,8 +351,16 @@ public class PostgresDatabase extends AbstractDatabase {
                 .join(cc)
                 .using(tc.CONSTRAINT_CATALOG, tc.CONSTRAINT_SCHEMA, tc.CONSTRAINT_NAME)
                 .where(tc.TABLE_SCHEMA.in(getInputSchemata()))
-                .orderBy(tc.TABLE_SCHEMA, tc.TABLE_NAME, cc.CONSTRAINT_NAME)
-                .fetch()) {
+                .and(getIncludeSystemCheckConstraints()
+                    ? noCondition()
+                    : row(tc.TABLE_SCHEMA, tc.TABLE_NAME, cc.CONSTRAINT_NAME).in(
+                        select(pn.NSPNAME, pt.RELNAME, pc.CONNAME)
+                        .from(pc)
+                        .join(pt).on(pc.CONRELID.eq(oid(pt)))
+                        .join(pn).on(pc.CONNAMESPACE.eq(oid(pn)))
+                        .where(pc.CONTYPE.eq(inline("c")))
+                    ))
+                .orderBy(tc.TABLE_SCHEMA, tc.TABLE_NAME, cc.CONSTRAINT_NAME)) {
 
             SchemaDefinition schema = getSchema(record.get(tc.TABLE_SCHEMA));
             TableDefinition table = getTable(schema, record.get(tc.TABLE_NAME));
@@ -552,7 +569,13 @@ public class PostgresDatabase extends AbstractDatabase {
                     SEQUENCES.SEQUENCE_NAME,
                     SEQUENCES.DATA_TYPE,
                     SEQUENCES.NUMERIC_PRECISION,
-                    SEQUENCES.NUMERIC_SCALE)
+                    SEQUENCES.NUMERIC_SCALE,
+                    SEQUENCES.START_VALUE.cast(BIGINT).as(SEQUENCES.START_VALUE),
+                    SEQUENCES.INCREMENT.cast(BIGINT).as(SEQUENCES.INCREMENT),
+                    SEQUENCES.MINIMUM_VALUE.cast(BIGINT).as(SEQUENCES.MINIMUM_VALUE),
+                    nullif(SEQUENCES.MAXIMUM_VALUE.cast(NUMERIC),
+                        power(inline(2, NUMERIC), SEQUENCES.NUMERIC_PRECISION.minus(1)).minus(1)).as(SEQUENCES.MAXIMUM_VALUE),
+                    SEQUENCES.CYCLE_OPTION.cast(BOOLEAN).as(SEQUENCES.CYCLE_OPTION))
                 .from(SEQUENCES)
                 .where(SEQUENCES.SEQUENCE_SCHEMA.in(getInputSchemata()))
                 .orderBy(
@@ -572,7 +595,18 @@ public class PostgresDatabase extends AbstractDatabase {
                 (String) null
             );
 
-            result.add(new DefaultSequenceDefinition(schema, record.get(SEQUENCES.SEQUENCE_NAME), type));
+            result.add(new DefaultSequenceDefinition(
+                schema,
+                record.get(SEQUENCES.SEQUENCE_NAME),
+                type,
+                null,
+                record.get(SEQUENCES.START_VALUE, Long.class),
+                record.get(SEQUENCES.INCREMENT, Long.class),
+                record.get(SEQUENCES.MINIMUM_VALUE, Long.class),
+                record.get(SEQUENCES.MAXIMUM_VALUE, Long.class),
+                record.get(SEQUENCES.CYCLE_OPTION, Boolean.class),
+                null // [#9442] The CACHE flag is not available from SEQUENCES
+            ));
         }
 
         return result;

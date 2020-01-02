@@ -35,13 +35,22 @@
  *
  *
  */
-package org.jooq;
+package org.jooq.meta;
 
 /**
- * The result of a {@link Migration}.
+ * An object holding information about a constraint.
  *
  * @author Lukas Eder
  */
-public interface MigrationResult {
+public interface ConstraintDefinition extends Definition {
 
+    /**
+     * The table holding this constraint.
+     */
+    TableDefinition getTable();
+
+    /**
+     * Whether this constraint is enforced.
+     */
+    boolean enforced();
 }

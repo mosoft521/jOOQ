@@ -43,6 +43,7 @@ import static org.jooq.util.xml.jaxb.TableConstraintType.FOREIGN_KEY;
 import static org.jooq.util.xml.jaxb.TableConstraintType.PRIMARY_KEY;
 import static org.jooq.util.xml.jaxb.TableConstraintType.UNIQUE;
 
+import java.math.BigInteger;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -54,12 +55,14 @@ import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Index;
 import org.jooq.Key;
+import org.jooq.Param;
 import org.jooq.Schema;
 import org.jooq.Sequence;
 import org.jooq.SortField;
 import org.jooq.SortOrder;
 import org.jooq.Table;
 import org.jooq.UniqueKey;
+import org.jooq.tools.Convert;
 import org.jooq.tools.StringUtils;
 import org.jooq.util.xml.jaxb.CheckConstraint;
 import org.jooq.util.xml.jaxb.Column;
@@ -176,6 +179,18 @@ final class InformationSchemaExport {
 
         if (q.getDataType().hasScale())
             iq.setNumericScale(q.getDataType().scale());
+
+        if (q.getStartWith() != null)
+            iq.setStartValue(Convert.convert(q.getStartWith() instanceof Param ? ((Param<?>) q.getStartWith()).getValue() : q.getStartWith().toString(), BigInteger.class));
+        if (q.getIncrementBy() != null)
+            iq.setIncrement(Convert.convert(q.getIncrementBy() instanceof Param ? ((Param<?>) q.getIncrementBy()).getValue() : q.getIncrementBy().toString(), BigInteger.class));
+        if (q.getMinvalue() != null)
+            iq.setMinimumValue(Convert.convert(q.getMinvalue() instanceof Param ? ((Param<?>) q.getMinvalue()).getValue() : q.getMinvalue().toString(), BigInteger.class));
+        if (q.getMaxvalue() != null)
+            iq.setMaximumValue(Convert.convert(q.getMaxvalue() instanceof Param ? ((Param<?>) q.getMaxvalue()).getValue() : q.getMaxvalue().toString(), BigInteger.class));
+        iq.setCycleOption(q.getCycle());
+        if (q.getCache() != null)
+            iq.setCache(Convert.convert(q.getCache() instanceof Param ? ((Param<?>) q.getCache()).getValue() : q.getCache().toString(), BigInteger.class));
 
         result.getSequences().add(iq);
     }

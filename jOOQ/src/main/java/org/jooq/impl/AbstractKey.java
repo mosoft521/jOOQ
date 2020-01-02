@@ -40,6 +40,8 @@ package org.jooq.impl;
 import java.util.Arrays;
 import java.util.List;
 
+import org.jooq.Constraint;
+import org.jooq.ConstraintEnforcementStep;
 import org.jooq.Context;
 import org.jooq.Key;
 import org.jooq.Record;
@@ -60,22 +62,18 @@ abstract class AbstractKey<R extends Record> extends AbstractNamed implements Ke
 
     private final Table<R>           table;
     private final TableField<R, ?>[] fields;
+    private final boolean            enforced;
 
-
-    @SafeVarargs
-
-    AbstractKey(Table<R> table, TableField<R, ?>... fields) {
-        this(table, null, fields);
+    AbstractKey(Table<R> table, TableField<R, ?>[] fields, boolean enforced) {
+        this(table, null, fields, enforced);
     }
 
-
-    @SafeVarargs
-
-    AbstractKey(Table<R> table, String name, TableField<R, ?>... fields) {
+    AbstractKey(Table<R> table, String name, TableField<R, ?>[] fields, boolean enforced) {
         super(name == null ? null : DSL.name(name), null);
 
         this.table = table;
         this.fields = fields;
+        this.enforced = enforced;
     }
 
     @Override
@@ -92,6 +90,27 @@ abstract class AbstractKey<R extends Record> extends AbstractNamed implements Ke
     public final TableField<R, ?>[] getFieldsArray() {
         return fields;
     }
+
+    @Override
+    public final boolean enforced() {
+        return enforced;
+    }
+
+    private final Constraint enforced(ConstraintEnforcementStep key) {
+
+
+
+
+
+        return key;
+    }
+
+    @Override
+    public final Constraint constraint() {
+        return enforced(constraint0());
+    }
+
+    abstract ConstraintEnforcementStep constraint0();
 
     @Override
     public final void accept(Context<?> ctx) {

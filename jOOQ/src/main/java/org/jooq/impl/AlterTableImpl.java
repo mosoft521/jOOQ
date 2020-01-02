@@ -164,6 +164,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.jooq.AlterTableAddStep;
+// ...
 import org.jooq.AlterTableAlterStep;
 import org.jooq.AlterTableDropStep;
 import org.jooq.AlterTableFinalStep;
@@ -203,6 +204,9 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
     AlterTableAddStep,
     AlterTableDropStep,
     AlterTableAlterStep,
+
+
+
     AlterTableUsingIndexStep,
     AlterTableRenameColumnToStep,
     AlterTableRenameIndexToStep,
@@ -259,6 +263,10 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
 
 
 
+
+
+
+
     private Field<?>                         alterColumn;
     private Nullability                      alterColumnNullability;
     private DataType<?>                      alterColumnType;
@@ -280,32 +288,38 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
         this.ifExists = ifExists;
     }
 
-    final Table<?>                 $table()                  { return table; }
-    final boolean                  $ifExists()               { return ifExists; }
-    final boolean                  $ifExistsColumn()         { return ifExistsColumn; }
-    final boolean                  $ifExistsConstraint()     { return ifExistsConstraint; }
-    final boolean                  $ifNotExistsColumn()      { return ifNotExistsColumn; }
-    final List<FieldOrConstraint>  $add()                    { return add; }
-    final Field<?>                 $addColumn()              { return addColumn; }
-    final DataType<?>              $addColumnType()          { return addColumnType; }
-    final Constraint               $addConstraint()          { return addConstraint; }
-    final boolean                  $addFirst()               { return addFirst; }
-    final Field<?>                 $addBefore()              { return addBefore; }
-    final Field<?>                 $addAfter()               { return addAfter; }
-    final Field<?>                 $alterColumn()            { return alterColumn; }
-    final Nullability              $alterColumnNullability() { return alterColumnNullability; }
-    final DataType<?>              $alterColumnType()        { return alterColumnType; }
-    final Field<?>                 $alterColumnDefault()     { return alterColumnDefault; }
-    final boolean                  $alterColumnDropDefault() { return alterColumnDropDefault; }
-    final Table<?>                 $renameTo()               { return renameTo; }
-    final Field<?>                 $renameColumn()           { return renameColumn; }
-    final Field<?>                 $renameColumnTo()         { return renameColumnTo; }
-    final Constraint               $renameConstraint()       { return renameConstraint; }
-    final Constraint               $renameConstraintTo()     { return renameConstraintTo; }
-    final List<Field<?>>           $dropColumns()            { return dropColumns; }
-    final Cascade                  $dropCascade()            { return dropCascade; }
-    final Constraint               $dropConstraint()         { return dropConstraint; }
-    final ConstraintType           $dropConstraintType()     { return dropConstraintType; }
+    final Table<?>                 $table()                   { return table; }
+    final boolean                  $ifExists()                { return ifExists; }
+    final boolean                  $ifExistsColumn()          { return ifExistsColumn; }
+    final boolean                  $ifExistsConstraint()      { return ifExistsConstraint; }
+    final boolean                  $ifNotExistsColumn()       { return ifNotExistsColumn; }
+    final List<FieldOrConstraint>  $add()                     { return add; }
+    final Field<?>                 $addColumn()               { return addColumn; }
+    final DataType<?>              $addColumnType()           { return addColumnType; }
+    final Constraint               $addConstraint()           { return addConstraint; }
+    final boolean                  $addFirst()                { return addFirst; }
+    final Field<?>                 $addBefore()               { return addBefore; }
+    final Field<?>                 $addAfter()                { return addAfter; }
+    final Field<?>                 $alterColumn()             { return alterColumn; }
+    final Nullability              $alterColumnNullability()  { return alterColumnNullability; }
+    final DataType<?>              $alterColumnType()         { return alterColumnType; }
+    final Field<?>                 $alterColumnDefault()      { return alterColumnDefault; }
+    final boolean                  $alterColumnDropDefault()  { return alterColumnDropDefault; }
+
+
+
+
+
+
+    final Table<?>                 $renameTo()                { return renameTo; }
+    final Field<?>                 $renameColumn()            { return renameColumn; }
+    final Field<?>                 $renameColumnTo()          { return renameColumnTo; }
+    final Constraint               $renameConstraint()        { return renameConstraint; }
+    final Constraint               $renameConstraintTo()      { return renameConstraintTo; }
+    final List<Field<?>>           $dropColumns()             { return dropColumns; }
+    final Cascade                  $dropCascade()             { return dropCascade; }
+    final Constraint               $dropConstraint()          { return dropConstraint; }
+    final ConstraintType           $dropConstraintType()      { return dropConstraintType; }
 
     // ------------------------------------------------------------------------
     // XXX: DSL API
@@ -634,6 +648,43 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
         alterColumn = field;
         return this;
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @Override
     public final AlterTableImpl set(DataType type) {
@@ -1357,6 +1408,30 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
 
             ctx.end(ALTER_TABLE_ADD);
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         else if (alterColumn != null) {
             ctx.start(ALTER_TABLE_ALTER);
 
@@ -1592,7 +1667,10 @@ final class AlterTableImpl extends AbstractRowCountQuery implements
                 ctx.visit(K_DROP).sql(' ').visit(K_PRIMARY_KEY);
             }
             else {
-                ctx.visit(K_DROP_CONSTRAINT).sql(' ');
+
+                // [#9382] In some dialects, unnamed UNIQUE constraints can be
+                //         dropped by dropping their declarations.
+                ctx.visit(dropConstraint.getUnqualifiedName().empty() ? K_DROP : K_DROP_CONSTRAINT).sql(' ');
 
                 if (ifExistsConstraint)
                     ctx.visit(K_IF_EXISTS).sql(' ');

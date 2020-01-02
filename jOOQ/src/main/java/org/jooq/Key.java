@@ -73,4 +73,9 @@ public interface Key<R extends Record> extends Named {
      * Get this <code>KEY</code> as a formal {@link Constraint} specification.
      */
     Constraint constraint();
+
+    /**
+     * Whether this key is being enforced.
+     */
+    boolean enforced();
 }

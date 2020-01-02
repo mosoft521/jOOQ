@@ -190,9 +190,27 @@ public class Settings
     @XmlElement(type = String.class, defaultValue = "DEFAULT")
     @XmlJavaTypeAdapter(SQLDialectAdapter.class)
     protected SQLDialect interpreterDialect;
+    @XmlElement(defaultValue = "DEFAULT")
+    @XmlSchemaType(name = "string")
+    protected InterpreterNameLookupCaseSensitivity interpreterNameLookupCaseSensitivity = InterpreterNameLookupCaseSensitivity.DEFAULT;
+    @XmlElement(type = String.class)
+    @XmlJavaTypeAdapter(LocaleAdapter.class)
+    protected Locale interpreterLocale;
+    @XmlElement(defaultValue = "false")
+    protected Boolean migrationAllowsUndo = false;
+    @XmlElement(defaultValue = "false")
+    protected Boolean migrationRevertUntracked = false;
+    @XmlElement(defaultValue = "true")
+    protected Boolean migrationAutoValidation = true;
+    @XmlElement(type = String.class)
+    @XmlJavaTypeAdapter(LocaleAdapter.class)
+    protected Locale locale;
     @XmlElement(type = String.class, defaultValue = "DEFAULT")
     @XmlJavaTypeAdapter(SQLDialectAdapter.class)
     protected SQLDialect parseDialect;
+    @XmlElement(type = String.class)
+    @XmlJavaTypeAdapter(LocaleAdapter.class)
+    protected Locale parseLocale;
     @XmlElement(defaultValue = "DEFAULT")
     @XmlSchemaType(name = "string")
     protected ParseNameCase parseNameCase = ParseNameCase.DEFAULT;
@@ -211,6 +229,9 @@ public class Settings
     protected String parseIgnoreCommentStart = "[jooq ignore start]";
     @XmlElement(defaultValue = "[jooq ignore stop]")
     protected String parseIgnoreCommentStop = "[jooq ignore stop]";
+    @XmlElementWrapper(name = "interpreterSearchPath")
+    @XmlElement(name = "schema")
+    protected List<InterpreterSearchSchema> interpreterSearchPath;
     @XmlElementWrapper(name = "parseSearchPath")
     @XmlElement(name = "schema")
     protected List<ParseSearchSchema> parseSearchPath;
@@ -436,7 +457,7 @@ public class Settings
     }
 
     /**
-     * The Locale to be used with any locale dependent logic (as e.g. transforming names to lower / uppper case).
+     * The Locale to be used with any render locale dependent logic (as e.g. transforming names to lower / uppper case), defaulting to {@link #getLocale()}.
      *
      */
     public Locale getRenderLocale() {
@@ -444,7 +465,7 @@ public class Settings
     }
 
     /**
-     * The Locale to be used with any locale dependent logic (as e.g. transforming names to lower / uppper case).
+     * The Locale to be used with any render locale dependent logic (as e.g. transforming names to lower / uppper case), defaulting to {@link #getLocale()}.
      *
      */
     public void setRenderLocale(Locale value) {
@@ -1611,6 +1632,126 @@ public class Settings
     }
 
     /**
+     * [#9633] The case sensitivity of identifiers used when interpreting SQL DDL statements.
+     *
+     */
+    public InterpreterNameLookupCaseSensitivity getInterpreterNameLookupCaseSensitivity() {
+        return interpreterNameLookupCaseSensitivity;
+    }
+
+    /**
+     * [#9633] The case sensitivity of identifiers used when interpreting SQL DDL statements.
+     *
+     */
+    public void setInterpreterNameLookupCaseSensitivity(InterpreterNameLookupCaseSensitivity value) {
+        this.interpreterNameLookupCaseSensitivity = value;
+    }
+
+    /**
+     * The Locale to be used with any interpreter locale dependent logic, defaulting to {@link #getLocale()}.
+     *
+     */
+    public Locale getInterpreterLocale() {
+        return interpreterLocale;
+    }
+
+    /**
+     * The Locale to be used with any interpreter locale dependent logic, defaulting to {@link #getLocale()}.
+     *
+     */
+    public void setInterpreterLocale(Locale value) {
+        this.interpreterLocale = value;
+    }
+
+    /**
+     * Whether migrations are allowed to be executed in inverse order.<p><strong>This is a potentially destructive feature, which should not be turned on in production</strong>. It is useful mostly to quickly switch between branches in a development environment. This feature is available only in commercial distributions.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isMigrationAllowsUndo() {
+        return migrationAllowsUndo;
+    }
+
+    /**
+     * Sets the value of the migrationAllowsUndo property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setMigrationAllowsUndo(Boolean value) {
+        this.migrationAllowsUndo = value;
+    }
+
+    /**
+     * Whether migrations revert any untracked changes in the schemas that are being migrated.<p><strong>This is a potentially destructive feature, which should not be turned on in production</strong>. It is useful mostly to quickly revert any elements created in a development environment. This feature is available only in commercial distributions.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isMigrationRevertUntracked() {
+        return migrationRevertUntracked;
+    }
+
+    /**
+     * Sets the value of the migrationRevertUntracked property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setMigrationRevertUntracked(Boolean value) {
+        this.migrationRevertUntracked = value;
+    }
+
+    /**
+     * Whether a migration automatically runs a validation first.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isMigrationAutoValidation() {
+        return migrationAutoValidation;
+    }
+
+    /**
+     * Sets the value of the migrationAutoValidation property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setMigrationAutoValidation(Boolean value) {
+        this.migrationAutoValidation = value;
+    }
+
+    /**
+     * The Locale to be used with any locale dependent logic if there is not a more specific locale available. More specific locales include e.g. {@link #getRenderLocale()}, {@link #getParseLocale()}, or {@link #getInterpreterLocale()}.
+     *
+     */
+    public Locale getLocale() {
+        return locale;
+    }
+
+    /**
+     * The Locale to be used with any locale dependent logic if there is not a more specific locale available. More specific locales include e.g. {@link #getRenderLocale()}, {@link #getParseLocale()}, or {@link #getInterpreterLocale()}.
+     *
+     */
+    public void setLocale(Locale value) {
+        this.locale = value;
+    }
+
+    /**
      * [#7337] The input dialect that should be chosen to disambiguate ambiguous SQL syntax.
      *
      */
@@ -1624,6 +1765,22 @@ public class Settings
      */
     public void setParseDialect(SQLDialect value) {
         this.parseDialect = value;
+    }
+
+    /**
+     * The Locale to be used with any parser locale dependent logic, defaulting to {@link #getLocale()}.
+     *
+     */
+    public Locale getParseLocale() {
+        return parseLocale;
+    }
+
+    /**
+     * The Locale to be used with any parser locale dependent logic, defaulting to {@link #getLocale()}.
+     *
+     */
+    public void setParseLocale(Locale value) {
+        this.parseLocale = value;
     }
 
     /**
@@ -1746,6 +1903,17 @@ public class Settings
         this.parseIgnoreCommentStop = value;
     }
 
+    public List<InterpreterSearchSchema> getInterpreterSearchPath() {
+        if (interpreterSearchPath == null) {
+            interpreterSearchPath = new ArrayList<InterpreterSearchSchema>();
+        }
+        return interpreterSearchPath;
+    }
+
+    public void setInterpreterSearchPath(List<InterpreterSearchSchema> interpreterSearchPath) {
+        this.interpreterSearchPath = interpreterSearchPath;
+    }
+
     public List<ParseSearchSchema> getParseSearchPath() {
         if (parseSearchPath == null) {
             parseSearchPath = new ArrayList<ParseSearchSchema>();
@@ -1857,7 +2025,7 @@ public class Settings
     }
 
     /**
-     * The Locale to be used with any locale dependent logic (as e.g. transforming names to lower / uppper case).
+     * The Locale to be used with any render locale dependent logic (as e.g. transforming names to lower / uppper case), defaulting to {@link #getLocale()}.
      *
      */
     public Settings withRenderLocale(Locale value) {
@@ -2274,11 +2442,62 @@ public class Settings
     }
 
     /**
+     * [#9633] The case sensitivity of identifiers used when interpreting SQL DDL statements.
+     *
+     */
+    public Settings withInterpreterNameLookupCaseSensitivity(InterpreterNameLookupCaseSensitivity value) {
+        setInterpreterNameLookupCaseSensitivity(value);
+        return this;
+    }
+
+    /**
+     * The Locale to be used with any interpreter locale dependent logic, defaulting to {@link #getLocale()}.
+     *
+     */
+    public Settings withInterpreterLocale(Locale value) {
+        setInterpreterLocale(value);
+        return this;
+    }
+
+    public Settings withMigrationAllowsUndo(Boolean value) {
+        setMigrationAllowsUndo(value);
+        return this;
+    }
+
+    public Settings withMigrationRevertUntracked(Boolean value) {
+        setMigrationRevertUntracked(value);
+        return this;
+    }
+
+    public Settings withMigrationAutoValidation(Boolean value) {
+        setMigrationAutoValidation(value);
+        return this;
+    }
+
+    /**
+     * The Locale to be used with any locale dependent logic if there is not a more specific locale available. More specific locales include e.g. {@link #getRenderLocale()}, {@link #getParseLocale()}, or {@link #getInterpreterLocale()}.
+     *
+     */
+    public Settings withLocale(Locale value) {
+        setLocale(value);
+        return this;
+    }
+
+    /**
      * [#7337] The input dialect that should be chosen to disambiguate ambiguous SQL syntax.
      *
      */
     public Settings withParseDialect(SQLDialect value) {
         setParseDialect(value);
+        return this;
+    }
+
+    /**
+     * The Locale to be used with any parser locale dependent logic, defaulting to {@link #getLocale()}.
+     *
+     */
+    public Settings withParseLocale(Locale value) {
+        setParseLocale(value);
         return this;
     }
 
@@ -2338,6 +2557,27 @@ public class Settings
      */
     public Settings withParseIgnoreCommentStop(String value) {
         setParseIgnoreCommentStop(value);
+        return this;
+    }
+
+    public Settings withInterpreterSearchPath(InterpreterSearchSchema... values) {
+        if (values!= null) {
+            for (InterpreterSearchSchema value: values) {
+                getInterpreterSearchPath().add(value);
+            }
+        }
+        return this;
+    }
+
+    public Settings withInterpreterSearchPath(Collection<InterpreterSearchSchema> values) {
+        if (values!= null) {
+            getInterpreterSearchPath().addAll(values);
+        }
+        return this;
+    }
+
+    public Settings withInterpreterSearchPath(List<InterpreterSearchSchema> interpreterSearchPath) {
+        setInterpreterSearchPath(interpreterSearchPath);
         return this;
     }
 
@@ -2428,7 +2668,14 @@ public class Settings
         builder.append("executeUpdateWithoutWhere", executeUpdateWithoutWhere);
         builder.append("executeDeleteWithoutWhere", executeDeleteWithoutWhere);
         builder.append("interpreterDialect", interpreterDialect);
+        builder.append("interpreterNameLookupCaseSensitivity", interpreterNameLookupCaseSensitivity);
+        builder.append("interpreterLocale", interpreterLocale);
+        builder.append("migrationAllowsUndo", migrationAllowsUndo);
+        builder.append("migrationRevertUntracked", migrationRevertUntracked);
+        builder.append("migrationAutoValidation", migrationAutoValidation);
+        builder.append("locale", locale);
         builder.append("parseDialect", parseDialect);
+        builder.append("parseLocale", parseLocale);
         builder.append("parseNameCase", parseNameCase);
         builder.append("parseWithMetaLookups", parseWithMetaLookups);
         builder.append("parseUnsupportedSyntax", parseUnsupportedSyntax);
@@ -2436,6 +2683,7 @@ public class Settings
         builder.append("parseIgnoreComments", parseIgnoreComments);
         builder.append("parseIgnoreCommentStart", parseIgnoreCommentStart);
         builder.append("parseIgnoreCommentStop", parseIgnoreCommentStop);
+        builder.append("interpreterSearchPath", "schema", interpreterSearchPath);
         builder.append("parseSearchPath", "schema", parseSearchPath);
     }
 
@@ -3034,12 +3282,75 @@ public class Settings
                 return false;
             }
         }
+        if (interpreterNameLookupCaseSensitivity == null) {
+            if (other.interpreterNameLookupCaseSensitivity!= null) {
+                return false;
+            }
+        } else {
+            if (!interpreterNameLookupCaseSensitivity.equals(other.interpreterNameLookupCaseSensitivity)) {
+                return false;
+            }
+        }
+        if (interpreterLocale == null) {
+            if (other.interpreterLocale!= null) {
+                return false;
+            }
+        } else {
+            if (!interpreterLocale.equals(other.interpreterLocale)) {
+                return false;
+            }
+        }
+        if (migrationAllowsUndo == null) {
+            if (other.migrationAllowsUndo!= null) {
+                return false;
+            }
+        } else {
+            if (!migrationAllowsUndo.equals(other.migrationAllowsUndo)) {
+                return false;
+            }
+        }
+        if (migrationRevertUntracked == null) {
+            if (other.migrationRevertUntracked!= null) {
+                return false;
+            }
+        } else {
+            if (!migrationRevertUntracked.equals(other.migrationRevertUntracked)) {
+                return false;
+            }
+        }
+        if (migrationAutoValidation == null) {
+            if (other.migrationAutoValidation!= null) {
+                return false;
+            }
+        } else {
+            if (!migrationAutoValidation.equals(other.migrationAutoValidation)) {
+                return false;
+            }
+        }
+        if (locale == null) {
+            if (other.locale!= null) {
+                return false;
+            }
+        } else {
+            if (!locale.equals(other.locale)) {
+                return false;
+            }
+        }
         if (parseDialect == null) {
             if (other.parseDialect!= null) {
                 return false;
             }
         } else {
             if (!parseDialect.equals(other.parseDialect)) {
+                return false;
+            }
+        }
+        if (parseLocale == null) {
+            if (other.parseLocale!= null) {
+                return false;
+            }
+        } else {
+            if (!parseLocale.equals(other.parseLocale)) {
                 return false;
             }
         }
@@ -3103,6 +3414,15 @@ public class Settings
             }
         } else {
             if (!parseIgnoreCommentStop.equals(other.parseIgnoreCommentStop)) {
+                return false;
+            }
+        }
+        if (interpreterSearchPath == null) {
+            if (other.interpreterSearchPath!= null) {
+                return false;
+            }
+        } else {
+            if (!interpreterSearchPath.equals(other.interpreterSearchPath)) {
                 return false;
             }
         }
@@ -3186,7 +3506,14 @@ public class Settings
         result = ((prime*result)+((executeUpdateWithoutWhere == null)? 0 :executeUpdateWithoutWhere.hashCode()));
         result = ((prime*result)+((executeDeleteWithoutWhere == null)? 0 :executeDeleteWithoutWhere.hashCode()));
         result = ((prime*result)+((interpreterDialect == null)? 0 :interpreterDialect.hashCode()));
+        result = ((prime*result)+((interpreterNameLookupCaseSensitivity == null)? 0 :interpreterNameLookupCaseSensitivity.hashCode()));
+        result = ((prime*result)+((interpreterLocale == null)? 0 :interpreterLocale.hashCode()));
+        result = ((prime*result)+((migrationAllowsUndo == null)? 0 :migrationAllowsUndo.hashCode()));
+        result = ((prime*result)+((migrationRevertUntracked == null)? 0 :migrationRevertUntracked.hashCode()));
+        result = ((prime*result)+((migrationAutoValidation == null)? 0 :migrationAutoValidation.hashCode()));
+        result = ((prime*result)+((locale == null)? 0 :locale.hashCode()));
         result = ((prime*result)+((parseDialect == null)? 0 :parseDialect.hashCode()));
+        result = ((prime*result)+((parseLocale == null)? 0 :parseLocale.hashCode()));
         result = ((prime*result)+((parseNameCase == null)? 0 :parseNameCase.hashCode()));
         result = ((prime*result)+((parseWithMetaLookups == null)? 0 :parseWithMetaLookups.hashCode()));
         result = ((prime*result)+((parseUnsupportedSyntax == null)? 0 :parseUnsupportedSyntax.hashCode()));
@@ -3194,6 +3521,7 @@ public class Settings
         result = ((prime*result)+((parseIgnoreComments == null)? 0 :parseIgnoreComments.hashCode()));
         result = ((prime*result)+((parseIgnoreCommentStart == null)? 0 :parseIgnoreCommentStart.hashCode()));
         result = ((prime*result)+((parseIgnoreCommentStop == null)? 0 :parseIgnoreCommentStop.hashCode()));
+        result = ((prime*result)+((interpreterSearchPath == null)? 0 :interpreterSearchPath.hashCode()));
         result = ((prime*result)+((parseSearchPath == null)? 0 :parseSearchPath.hashCode()));
         return result;
     }

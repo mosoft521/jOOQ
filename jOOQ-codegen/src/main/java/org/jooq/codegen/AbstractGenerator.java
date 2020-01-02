@@ -70,6 +70,7 @@ abstract class AbstractGenerator implements Generator {
     boolean                            useCatalogVersionProvider          = false;
     boolean                            generateRoutines                   = true;
     boolean                            generateSequences                  = true;
+    boolean                            generateSequenceFlags              = true;
     boolean                            generateUDTs                       = true;
     boolean                            generateTables                     = true;
     boolean                            generateEmbeddables                = true;
@@ -101,6 +102,7 @@ abstract class AbstractGenerator implements Generator {
     boolean                            generateGlobalQueueReferences      = true;
     boolean                            generateGlobalLinkReferences       = true;
     boolean                            generateGlobalKeyReferences        = true;
+    boolean                            generateGlobalIndexReferences      = true;
     boolean                            generateJavadoc                    = true;
     boolean                            generateComments                   = true;
     boolean                            generateCommentsOnAttributes       = true;
@@ -333,6 +335,16 @@ abstract class AbstractGenerator implements Generator {
     @Override
     public void setGenerateSequences(boolean generateSequences) {
         this.generateSequences = generateSequences;
+    }
+
+    @Override
+    public boolean generateSequenceFlags() {
+        return generateSequenceFlags;
+    }
+
+    @Override
+    public void setGenerateSequenceFlags(boolean generateSequenceFlags) {
+        this.generateSequenceFlags = generateSequenceFlags;
     }
 
     @Override
@@ -600,6 +612,16 @@ abstract class AbstractGenerator implements Generator {
     @Override
     public void setGenerateGlobalKeyReferences(boolean globalKeyReferences) {
         this.generateGlobalKeyReferences = globalKeyReferences;
+    }
+
+    @Override
+    public boolean generateGlobalIndexReferences() {
+        return generateIndexes() && generateGlobalObjectReferences() && generateGlobalIndexReferences;
+    }
+
+    @Override
+    public void setGenerateGlobalIndexReferences(boolean globalIndexReferences) {
+        this.generateGlobalIndexReferences = globalIndexReferences;
     }
 
     @Override

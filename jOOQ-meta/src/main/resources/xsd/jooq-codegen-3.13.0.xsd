@@ -559,6 +559,10 @@ Excludes match before includes, i.e. excludes have a higher priority.]]></jxb:ja
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[This flag indicates whether check constraints should be included in output produced by this database]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
+      <element name="includeSystemIndexes" type="boolean" default="false" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[This flag indicates whether system generated indexes should be included in output produced by this database]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="includeSystemCheckConstraints" type="boolean" default="false" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[This flag indicates whether system generated check constraints should be included in output produced by this database]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
@@ -1092,6 +1096,10 @@ type. If provided, both "includeExpression" and "includeTypes" must match.]]></j
 This is a prerequisite for various advanced features]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
+      <element name="sequenceFlags" type="boolean" default="true" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Sequence flags should be generated and used.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="implicitJoinPathsToOne" type="boolean" default="true" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Generate implicit join path constructors on generated tables for outgoing foreign key relationships (to-one relationships)]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
@@ -1258,6 +1266,10 @@ jOOQ version used for source code.]]></jxb:javadoc></jxb:property></appinfo></an
 
       <element name="globalKeyReferences" type="boolean" default="true" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Turn off generation of global key references.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="globalIndexReferences" type="boolean" default="true" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Turn off generation of global index references.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
       <element name="javadoc" type="boolean" default="true" minOccurs="0" maxOccurs="1">

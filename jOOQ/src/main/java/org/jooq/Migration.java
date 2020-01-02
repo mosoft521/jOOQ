@@ -37,7 +37,8 @@
  */
 package org.jooq;
 
-import org.jooq.exception.DataDefinitionException;
+import org.jooq.exception.DataMigrationException;
+import org.jooq.exception.DataMigrationValidationException;
 
 /**
  * An executable migration between two {@link Version} instances.
@@ -62,10 +63,18 @@ public interface Migration extends Scope {
     Queries queries();
 
     /**
+     * Validate a migration.
+     *
+     * @throws DataMigrationValidationException When something went wrong during
+     *             the validation of the migration.
+     */
+    void validate() throws DataMigrationValidationException;
+
+    /**
      * Apply the migration.
      *
-     * @throws DataDefinitionException When something went wrong during the
+     * @throws DataMigrationException When something went wrong during the
      *             application of the migration.
      */
-    MigrationResult migrate() throws DataDefinitionException;
+    void execute() throws DataMigrationException;
 }

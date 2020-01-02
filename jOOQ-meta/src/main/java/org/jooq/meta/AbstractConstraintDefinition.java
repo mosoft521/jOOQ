@@ -35,222 +35,43 @@
  *
  *
  */
-package org.jooq;
+package org.jooq.meta;
 
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * @author Lukas Eder
+ */
+public class AbstractConstraintDefinition extends AbstractDefinition implements ConstraintDefinition {
 
+    private final TableDefinition table;
+    private final boolean         enforced;
 
+    public AbstractConstraintDefinition(SchemaDefinition schema, TableDefinition table, String name, boolean enforced) {
+        super(schema.getDatabase(), schema, name, null);
 
+        this.table = table;
+        this.enforced = enforced;
+    }
 
+    @Override
+    public List<Definition> getDefinitionPath() {
+        List<Definition> result = new ArrayList<>();
 
+        result.addAll(getSchema().getDefinitionPath());
+        result.add(this);
 
+        return result;
+    }
 
+    @Override
+    public TableDefinition getTable() {
+        return table;
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    @Override
+    public boolean enforced() {
+        return enforced;
+    }
+}

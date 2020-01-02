@@ -40,6 +40,7 @@ package org.jooq.meta.mysql;
 
 import static org.jooq.impl.DSL.falseCondition;
 import static org.jooq.impl.DSL.inline;
+import static org.jooq.impl.DSL.noCondition;
 import static org.jooq.meta.mysql.information_schema.Tables.CHECK_CONSTRAINTS;
 import static org.jooq.meta.mysql.information_schema.Tables.COLUMNS;
 import static org.jooq.meta.mysql.information_schema.Tables.KEY_COLUMN_USAGE;
@@ -88,6 +89,7 @@ import org.jooq.meta.SchemaDefinition;
 import org.jooq.meta.SequenceDefinition;
 import org.jooq.meta.TableDefinition;
 import org.jooq.meta.UDTDefinition;
+import org.jooq.meta.mariadb.MariaDBDatabase;
 import org.jooq.meta.mysql.information_schema.tables.CheckConstraints;
 import org.jooq.meta.mysql.information_schema.tables.Columns;
 import org.jooq.meta.mysql.information_schema.tables.KeyColumnUsage;
@@ -113,6 +115,15 @@ public class MySQLDatabase extends AbstractDatabase {
     protected List<IndexDefinition> getIndexes0() throws SQLException {
         List<IndexDefinition> result = new ArrayList<>();
 
+        // Workaround for MemSQL bug
+        // https://www.memsql.com/forum/t/wrong-query-result-on-information-schema-query/1423/2
+        Table<?> from = getIncludeSystemIndexes()
+            ? STATISTICS
+            : STATISTICS.leftJoin(TABLE_CONSTRAINTS)
+                .on(Statistics.INDEX_SCHEMA.eq(TableConstraints.CONSTRAINT_SCHEMA))
+                .and(Statistics.TABLE_NAME.eq(TableConstraints.TABLE_NAME))
+                .and(Statistics.INDEX_NAME.eq(TableConstraints.CONSTRAINT_NAME));
+
         // Same implementation as in H2Database and HSQLDBDatabase
         Map<Record, Result<Record>> indexes = create()
             // [#2059] In MemSQL primary key indexes are typically duplicated
@@ -124,12 +135,16 @@ public class MySQLDatabase extends AbstractDatabase {
                 Statistics.NON_UNIQUE,
                 Statistics.COLUMN_NAME,
                 Statistics.SEQ_IN_INDEX)
-            .from(STATISTICS)
+            .from(from)
             // [#5213] Duplicate schema value to work around MySQL issue https://bugs.mysql.com/bug.php?id=86022
             .where(Statistics.TABLE_SCHEMA.in(getInputSchemata()).or(
                   getInputSchemata().size() == 1
                 ? Statistics.TABLE_SCHEMA.in(getInputSchemata())
                 : falseCondition()))
+            .and(getIncludeSystemIndexes()
+                ? noCondition()
+                : TableConstraints.CONSTRAINT_NAME.isNull()
+            )
             .orderBy(
                 Statistics.TABLE_SCHEMA,
                 Statistics.TABLE_NAME,
@@ -333,13 +348,34 @@ public class MySQLDatabase extends AbstractDatabase {
                         TableConstraints.TABLE_SCHEMA,
                         TableConstraints.TABLE_NAME,
                         CheckConstraints.CONSTRAINT_NAME,
-                        CheckConstraints.CHECK_CLAUSE
+                        CheckConstraints.CHECK_CLAUSE,
+
+                        // We need this additional, useless projection. See:
+                        // https://jira.mariadb.org/browse/MDEV-21201
+                        TableConstraints.CONSTRAINT_CATALOG,
+                        TableConstraints.CONSTRAINT_SCHEMA
                      )
                     .from(TABLE_CONSTRAINTS)
                     .join(CHECK_CONSTRAINTS)
-                    .using(TableConstraints.CONSTRAINT_CATALOG, TableConstraints.CONSTRAINT_SCHEMA, TableConstraints.CONSTRAINT_NAME)
+                    .using(this instanceof MariaDBDatabase
+                        ? new Field[] {
+                            TableConstraints.CONSTRAINT_CATALOG,
+                            TableConstraints.CONSTRAINT_SCHEMA,
+                            // MariaDB has this column, but not MySQL
+                            TableConstraints.TABLE_NAME,
+                            TableConstraints.CONSTRAINT_NAME
+                        }
+                        : new Field[] {
+                            TableConstraints.CONSTRAINT_CATALOG,
+                            TableConstraints.CONSTRAINT_SCHEMA,
+                            TableConstraints.CONSTRAINT_NAME
+                        }
+                    )
                     .where(TableConstraints.TABLE_SCHEMA.in(getInputSchemata()))
-                    .orderBy(TableConstraints.TABLE_SCHEMA, TableConstraints.TABLE_NAME, TableConstraints.CONSTRAINT_NAME)) {
+                    .orderBy(
+                        TableConstraints.TABLE_SCHEMA,
+                        TableConstraints.TABLE_NAME,
+                        TableConstraints.CONSTRAINT_NAME)) {
 
                 SchemaDefinition schema = getSchema(record.get(TableConstraints.TABLE_SCHEMA));
                 TableDefinition table = getTable(schema, record.get(TableConstraints.TABLE_NAME));

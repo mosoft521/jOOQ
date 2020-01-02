@@ -99,7 +99,7 @@ providing a name to parameters, resulting in <code>:1</code> or <code>@1</code> 
       </element>
 
       <element name="renderLocale" type="string" minOccurs="0" maxOccurs="1">
-        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The Locale to be used with any locale dependent logic (as e.g. transforming names to lower / uppper case).]]></jxb:javadoc></jxb:property></appinfo></annotation>
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The Locale to be used with any render locale dependent logic (as e.g. transforming names to lower / uppper case), defaulting to {@link #getLocale()}.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
       <element name="renderFormatted" type="boolean" minOccurs="0" maxOccurs="1" default="false">
@@ -391,8 +391,40 @@ jOOQ queries, for which no specific fetchSize value was specified.]]></jxb:javad
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[[#7337] The dialect that should be used to interpret SQL DDL statements. {@link SQLDialect#DEFAULT} means that jOOQ interprets the SQL itself. Any other dialect (if supported) will be interpreted on an actual JDBC connection.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
+      <element name="interpreterNameLookupCaseSensitivity" type="jooq-runtime:InterpreterNameLookupCaseSensitivity" minOccurs="0" maxOccurs="1" default="DEFAULT">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[[#9633] The case sensitivity of identifiers used when interpreting SQL DDL statements.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="interpreterLocale" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The Locale to be used with any interpreter locale dependent logic, defaulting to {@link #getLocale()}.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="interpreterSearchPath" type="jooq-runtime:InterpreterSearchSchemata" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[[#9677] The search path to be used for unqualified table lookups by the interpreter.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="migrationAllowsUndo" type="boolean" minOccurs="0" maxOccurs="1" default="false">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Whether migrations are allowed to be executed in inverse order.<p><strong>This is a potentially destructive feature, which should not be turned on in production</strong>. It is useful mostly to quickly switch between branches in a development environment. This feature is available only in commercial distributions.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="migrationRevertUntracked" type="boolean" minOccurs="0" maxOccurs="1" default="false">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Whether migrations revert any untracked changes in the schemas that are being migrated.<p><strong>This is a potentially destructive feature, which should not be turned on in production</strong>. It is useful mostly to quickly revert any elements created in a development environment. This feature is available only in commercial distributions.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="migrationAutoValidation" type="boolean" minOccurs="0" maxOccurs="1" default="true">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Whether a migration automatically runs a validation first.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="locale" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The Locale to be used with any locale dependent logic if there is not a more specific locale available. More specific locales include e.g. {@link #getRenderLocale()}, {@link #getParseLocale()}, or {@link #getInterpreterLocale()}.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="parseDialect" type="string" minOccurs="0" maxOccurs="1" default="DEFAULT">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[[#7337] The input dialect that should be chosen to disambiguate ambiguous SQL syntax.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="parseLocale" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The Locale to be used with any parser locale dependent logic, defaulting to {@link #getLocale()}.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
       <element name="parseNameCase" type="jooq-runtime:ParseNameCase" minOccurs="0" maxOccurs="1" default="DEFAULT">
@@ -436,6 +468,24 @@ jOOQ queries, for which no specific fetchSize value was specified.]]></jxb:javad
   </complexType>
 
   <complexType name="ParseSearchSchema">
+    <annotation><appinfo><jxb:class><jxb:javadoc><![CDATA[A schema that is on the search path.]]></jxb:javadoc></jxb:class></appinfo></annotation>
+    <all>
+      <element name="catalog" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The catalog qualifier of the schema, if applicable.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+      <element name="schema" type="string" minOccurs="1" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The schema qualifier whose elements can be found from the search path.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+    </all>
+  </complexType>
+
+  <complexType name="InterpreterSearchSchemata">
+    <sequence>
+      <element name="schema" type="jooq-runtime:InterpreterSearchSchema" minOccurs="0" maxOccurs="unbounded"/>
+    </sequence>
+  </complexType>
+
+  <complexType name="InterpreterSearchSchema">
     <annotation><appinfo><jxb:class><jxb:javadoc><![CDATA[A schema that is on the search path.]]></jxb:javadoc></jxb:class></appinfo></annotation>
     <all>
       <element name="catalog" type="string" minOccurs="0" maxOccurs="1">
@@ -800,6 +850,23 @@ Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javad
 
       <!-- The default applies for optional keywords. -->
       <enumeration value="DEFAULT"/>
+    </restriction>
+  </simpleType>
+
+  <simpleType name="InterpreterNameLookupCaseSensitivity">
+    <restriction base="string">
+
+      <!-- The default value depending on Settings.interpreterDialect -->
+      <enumeration value="DEFAULT"/>
+
+      <!-- Identifiers are always case sensitive -->
+      <enumeration value="ALWAYS"/>
+
+      <!-- Only quoted identifiers are case sensitive -->
+      <enumeration value="WHEN_QUOTED"/>
+
+      <!-- Identifiers are never case sensitive -->
+      <enumeration value="NEVER"/>
     </restriction>
   </simpleType>
 

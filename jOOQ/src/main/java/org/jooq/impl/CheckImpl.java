@@ -40,6 +40,7 @@ package org.jooq.impl;
 import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Constraint;
+import org.jooq.ConstraintEnforcementStep;
 import org.jooq.Context;
 import org.jooq.Name;
 import org.jooq.Record;
@@ -57,31 +58,47 @@ final class CheckImpl<R extends Record> extends AbstractNamed implements Check<R
 
     final Table<R>            table;
     final Condition           condition;
+    final boolean             enforced;
 
-    CheckImpl(Table<R> table, Condition condition) {
-        this(table, null, condition);
+    CheckImpl(Table<R> table, Condition condition, boolean enforced) {
+        this(table, null, condition, enforced);
     }
 
-    CheckImpl(Table<R> table, Name name, Condition condition) {
+    CheckImpl(Table<R> table, Name name, Condition condition, boolean enforced) {
         super(name, null);
 
         this.table = table;
         this.condition = condition;
+        this.enforced = enforced;
     }
 
     @Override
-    public Table<R> getTable() {
+    public final Table<R> getTable() {
         return table;
     }
 
     @Override
-    public Condition condition() {
+    public final Condition condition() {
         return condition;
     }
 
     @Override
-    public Constraint constraint() {
-        return DSL.constraint(getName()).check(condition);
+    public final boolean enforced() {
+        return enforced;
+    }
+
+    private final Constraint enforced(ConstraintEnforcementStep key) {
+
+
+
+
+
+        return key;
+    }
+
+    @Override
+    public final Constraint constraint() {
+        return enforced(DSL.constraint(getName()).check(condition));
     }
 
     @Override

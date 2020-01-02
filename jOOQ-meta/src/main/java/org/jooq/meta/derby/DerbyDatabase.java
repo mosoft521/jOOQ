@@ -38,8 +38,17 @@
 
 package org.jooq.meta.derby;
 
+import static org.jooq.impl.DSL.case_;
+import static org.jooq.impl.DSL.cast;
+import static org.jooq.impl.DSL.condition;
 import static org.jooq.impl.DSL.field;
+import static org.jooq.impl.DSL.inline;
+import static org.jooq.impl.DSL.noCondition;
+import static org.jooq.impl.DSL.not;
+import static org.jooq.impl.DSL.nullif;
+import static org.jooq.impl.DSL.one;
 import static org.jooq.impl.SQLDataType.VARCHAR;
+import static org.jooq.meta.derby.sys.tables.Syschecks.SYSCHECKS;
 import static org.jooq.meta.derby.sys.tables.Sysconglomerates.SYSCONGLOMERATES;
 import static org.jooq.meta.derby.sys.tables.Sysconstraints.SYSCONSTRAINTS;
 import static org.jooq.meta.derby.sys.tables.Syskeys.SYSKEYS;
@@ -59,22 +68,29 @@ import org.jooq.Record;
 import org.jooq.Record5;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
+import org.jooq.SortOrder;
 import org.jooq.impl.DSL;
 import org.jooq.meta.AbstractDatabase;
+import org.jooq.meta.AbstractIndexDefinition;
 import org.jooq.meta.ArrayDefinition;
 import org.jooq.meta.CatalogDefinition;
 import org.jooq.meta.DataTypeDefinition;
+import org.jooq.meta.DefaultCheckConstraintDefinition;
 import org.jooq.meta.DefaultDataTypeDefinition;
+import org.jooq.meta.DefaultIndexColumnDefinition;
 import org.jooq.meta.DefaultRelations;
 import org.jooq.meta.DefaultSequenceDefinition;
 import org.jooq.meta.DomainDefinition;
 import org.jooq.meta.EnumDefinition;
+import org.jooq.meta.IndexColumnDefinition;
+import org.jooq.meta.IndexDefinition;
 import org.jooq.meta.PackageDefinition;
 import org.jooq.meta.RoutineDefinition;
 import org.jooq.meta.SchemaDefinition;
 import org.jooq.meta.SequenceDefinition;
 import org.jooq.meta.TableDefinition;
 import org.jooq.meta.UDTDefinition;
+import org.jooq.meta.derby.sys.tables.Syschecks;
 import org.jooq.meta.derby.sys.tables.Sysconglomerates;
 import org.jooq.meta.derby.sys.tables.Sysconstraints;
 import org.jooq.meta.derby.sys.tables.Syskeys;
@@ -214,19 +230,108 @@ public class DerbyDatabase extends AbstractDatabase {
         while (m.find()) {
             String[] split = m.group(1).split(",");
 
-            if (split != null) {
-                for (String index : split) {
+            if (split != null)
+                for (String index : split)
                     result.add(Integer.valueOf(index.trim()) - 1);
-                }
-            }
         }
 
         return result;
     }
 
     @Override
-    protected void loadCheckConstraints(DefaultRelations r) throws SQLException {
-        // Currently not supported
+    protected void loadCheckConstraints(DefaultRelations relations) throws SQLException {
+        for (Record record : create()
+            .select(
+                Sysschemas.SCHEMANAME,
+                Systables.TABLENAME,
+                Sysconstraints.CONSTRAINTNAME,
+                Syschecks.CHECKDEFINITION)
+            .from(SYSCHECKS)
+            .join(SYSCONSTRAINTS)
+                .on(Syschecks.CONSTRAINTID.eq(Sysconstraints.CONSTRAINTID))
+            .join(SYSTABLES)
+                .on(Systables.TABLEID.equal(Sysconstraints.TABLEID))
+            .join(SYSSCHEMAS)
+                .on(Sysschemas.SCHEMAID.equal(Systables.SCHEMAID))
+            .where(Sysschemas.SCHEMANAME.in(getInputSchemata()))
+        ) {
+            SchemaDefinition schema = getSchema(record.get(Sysschemas.SCHEMANAME));
+            TableDefinition table = getTable(schema, record.get(Systables.TABLENAME));
+
+            if (table != null) {
+                relations.addCheckConstraint(table, new DefaultCheckConstraintDefinition(
+                    schema,
+                    table,
+                    record.get(Sysconstraints.CONSTRAINTNAME),
+                    record.get(Syschecks.CHECKDEFINITION)
+                ));
+            }
+        }
+    }
+
+    @Override
+    protected List<IndexDefinition> getIndexes0() throws SQLException {
+        List<IndexDefinition> result = new ArrayList<>();
+
+        indexLoop:
+        for (Record record : create()
+            .select(
+                Sysschemas.SCHEMANAME,
+                Systables.TABLENAME,
+                Sysconglomerates.CONGLOMERATENAME,
+                Sysconglomerates.DESCRIPTOR)
+            .from(SYSCONGLOMERATES)
+            .join(SYSTABLES).on(Sysconglomerates.TABLEID.eq(Systables.TABLEID))
+            .join(SYSSCHEMAS).on(Systables.SCHEMAID.eq(Sysschemas.SCHEMAID))
+
+            // [#6797] The cast is necessary if a non-standard collation is used
+            .where(Sysschemas.SCHEMANAME.cast(VARCHAR(32672)).in(getInputSchemata()))
+            .and(Sysconglomerates.ISINDEX)
+            .and(getIncludeSystemIndexes()
+                ? noCondition()
+                : not(condition(Sysconglomerates.ISCONSTRAINT)))
+            .orderBy(
+                Sysschemas.SCHEMANAME,
+                Systables.TABLENAME,
+                Sysconglomerates.CONGLOMERATENAME)
+        ) {
+            final SchemaDefinition tableSchema = getSchema(record.get(Sysschemas.SCHEMANAME));
+            if (tableSchema == null)
+                continue indexLoop;
+
+            final String indexName = record.get(Sysconglomerates.CONGLOMERATENAME);
+            final String tableName = record.get(Systables.TABLENAME);
+            final TableDefinition table = getTable(tableSchema, tableName);
+            if (table == null)
+                continue indexLoop;
+
+            final String descriptor = record.get(Sysconglomerates.DESCRIPTOR);
+            if (descriptor == null)
+                continue indexLoop;
+
+            result.add(new AbstractIndexDefinition(tableSchema, indexName, table, descriptor.toUpperCase().contains("UNIQUE")) {
+                List<IndexColumnDefinition> indexColumns = new ArrayList<>();
+
+                {
+                    List<Integer> columnIndexes = decode(descriptor);
+                    for (int i = 0; i < columnIndexes.size(); i++) {
+                        indexColumns.add(new DefaultIndexColumnDefinition(
+                            this,
+                            table.getColumn(columnIndexes.get(i)),
+                            SortOrder.ASC,
+                            i + 1
+                        ));
+                    }
+                }
+
+                @Override
+                protected List<IndexColumnDefinition> getIndexColumns0() {
+                    return indexColumns;
+                }
+            });
+        }
+
+        return result;
     }
 
     @Override
@@ -258,7 +363,21 @@ public class DerbyDatabase extends AbstractDatabase {
         for (Record record : create().select(
                     Sysschemas.SCHEMANAME,
                     Syssequences.SEQUENCENAME,
-                    Syssequences.SEQUENCEDATATYPE)
+                    Syssequences.SEQUENCEDATATYPE,
+                    nullif(Syssequences.STARTVALUE, one()).as(Syssequences.STARTVALUE),
+                    nullif(Syssequences.INCREMENT, one()).as(Syssequences.INCREMENT),
+                    nullif(Syssequences.MINIMUMVALUE, case_(cast(Syssequences.SEQUENCEDATATYPE, VARCHAR))
+                        .when(inline("SMALLINT"), inline((long) Short.MIN_VALUE))
+                        .when(inline("INTEGER"), inline((long) Integer.MIN_VALUE))
+                        .when(inline("BIGINT"), inline(Long.MIN_VALUE))
+                   ).as(Syssequences.MINIMUMVALUE),
+                    nullif(Syssequences.MAXIMUMVALUE, case_(cast(Syssequences.SEQUENCEDATATYPE, VARCHAR))
+                        .when(inline("SMALLINT"), inline((long) Short.MAX_VALUE))
+                        .when(inline("INTEGER"), inline((long) Integer.MAX_VALUE))
+                        .when(inline("BIGINT"), inline(Long.MAX_VALUE))
+                   ).as(Syssequences.MAXIMUMVALUE),
+                    Syssequences.CYCLEOPTION
+                )
                 .from(SYSSEQUENCES)
                 .join(SYSSCHEMAS)
                 .on(Sysschemas.SCHEMAID.equal(Syssequences.SCHEMAID))
@@ -279,8 +398,16 @@ public class DerbyDatabase extends AbstractDatabase {
 
             result.add(new DefaultSequenceDefinition(
                 schema,
-                record.get(Syssequences.SEQUENCENAME, String.class),
-                type));
+                record.get(Syssequences.SEQUENCENAME),
+                type,
+                null,
+                record.get(Syssequences.STARTVALUE),
+                record.get(Syssequences.INCREMENT),
+                record.get(Syssequences.MINIMUMVALUE),
+                record.get(Syssequences.MAXIMUMVALUE),
+                record.get(Syssequences.CYCLEOPTION, Boolean.class),
+                null
+            ));
         }
 
         return result;

@@ -57,6 +57,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.TypeVariable;
+import java.math.BigInteger;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -357,6 +358,7 @@ public class JavaGenerator extends AbstractGenerator {
               + ((!generateRecords && generateDaos) ? " (forced to true because of <daos/>)" : ""));
         log.info("  routines", generateRoutines());
         log.info("  sequences", generateSequences());
+        log.info("  sequenceFlags", generateSequenceFlags());
         log.info("  table-valued functions", generateTableValuedFunctions());
         log.info("  tables", generateTables()
               + ((!generateTables && generateRecords) ? " (forced to true because of <records/>)" :
@@ -535,7 +537,7 @@ public class JavaGenerator extends AbstractGenerator {
             generateRelations(schema);
         }
 
-        if (generateIndexes() && database.getTables(schema).size() > 0) {
+        if (generateGlobalIndexReferences() && database.getTables(schema).size() > 0) {
             generateIndexes(schema);
         }
 
@@ -973,7 +975,26 @@ public class JavaGenerator extends AbstractGenerator {
                 out.tab(1).println("private static class Indexes%s {", block);
         }
 
-        // (Name name, Table<?> table, SortField<?>[] sortFields, boolean unique)
+        if (scala)
+            out.tab(2).print("val %s : %s = ",
+                getStrategy().getJavaIdentifier(index),
+                Index.class
+            );
+        else
+            out.tab(2).print("public static %s %s = ",
+                Index.class,
+                getStrategy().getJavaIdentifier(index)
+            );
+
+        printCreateIndex(out, index);
+
+        if (scala)
+            out.println();
+        else
+            out.println(";");
+    }
+
+    private void printCreateIndex(JavaWriter out, IndexDefinition index) {
         String sortFieldSeparator = "";
         StringBuilder orderFields = new StringBuilder();
 
@@ -986,9 +1007,7 @@ public class JavaGenerator extends AbstractGenerator {
         }
 
         if (scala)
-            out.tab(2).println("val %s : %s = %s.createIndex(\"%s\", %s, Array[%s [_] ](%s), %s)",
-                getStrategy().getJavaIdentifier(index),
-                Index.class,
+            out.print("%s.createIndex(\"%s\", %s, Array[%s [_] ](%s), %s)",
                 Internal.class,
                 escapeString(index.getOutputName()),
                 out.ref(getStrategy().getFullJavaIdentifier(index.getTable()), 2),
@@ -997,9 +1016,7 @@ public class JavaGenerator extends AbstractGenerator {
                 index.isUnique()
             );
         else
-            out.tab(2).println("public static %s %s = %s.createIndex(\"%s\", %s, new %s[] { %s }, %s);",
-                Index.class,
-                getStrategy().getJavaIdentifier(index),
+            out.print("%s.createIndex(\"%s\", %s, new %s[] { %s }, %s)",
                 Internal.class,
                 escapeString(index.getOutputName()),
                 out.ref(getStrategy().getFullJavaIdentifier(index.getTable()), 2),
@@ -1101,17 +1118,22 @@ public class JavaGenerator extends AbstractGenerator {
 
     private void printCreateUniqueKey(JavaWriter out, UniqueKeyDefinition uniqueKey) {
         if (scala)
-            out.print("%s.createUniqueKey(%s, \"%s\", [[%s]])",
+            out.print("%s.createUniqueKey(%s, \"%s\", Array([[%s]]).asInstanceOf[Array[%s[%s, _] ] ], %s)",
                 Internal.class,
                 out.ref(getStrategy().getFullJavaIdentifier(uniqueKey.getTable()), 2),
                 escapeString(uniqueKey.getOutputName()),
-                out.ref(getStrategy().getFullJavaIdentifiers(uniqueKey.getKeyColumns()), colRefSegments(null)));
+                out.ref(getStrategy().getFullJavaIdentifiers(uniqueKey.getKeyColumns()), colRefSegments(null)),
+                TableField.class,
+                out.ref(getStrategy().getJavaClassName(uniqueKey.getTable(), Mode.RECORD)),
+                uniqueKey.enforced());
         else
-            out.print("%s.createUniqueKey(%s, \"%s\", [[%s]])",
+            out.print("%s.createUniqueKey(%s, \"%s\", new %s[] { [[%s]] }, %s)",
                 Internal.class,
                 out.ref(getStrategy().getFullJavaIdentifier(uniqueKey.getTable()), 2),
                 escapeString(uniqueKey.getOutputName()),
-                out.ref(getStrategy().getFullJavaIdentifiers(uniqueKey.getKeyColumns()), colRefSegments(null)));
+                TableField.class,
+                out.ref(getStrategy().getFullJavaIdentifiers(uniqueKey.getKeyColumns()), colRefSegments(null)),
+                uniqueKey.enforced());
     }
 
     protected void printForeignKey(JavaWriter out, int foreignKeyCounter, ForeignKeyDefinition foreignKey) {
@@ -1132,7 +1154,7 @@ public class JavaGenerator extends AbstractGenerator {
         }
 
         if (scala)
-            out.tab(2).println("val %s : %s[%s, %s] = %s.createForeignKey(%s, %s, \"%s\", [[%s]])",
+            out.tab(2).println("val %s : %s[%s, %s] = %s.createForeignKey(%s, %s, \"%s\", Array([[%s]]).asInstanceOf[Array[%s[%s, _] ] ], %s)",
                 getStrategy().getJavaIdentifier(foreignKey),
                 ForeignKey.class,
                 out.ref(getStrategy().getFullJavaClassName(foreignKey.getKeyTable(), Mode.RECORD)),
@@ -1141,9 +1163,12 @@ public class JavaGenerator extends AbstractGenerator {
                 out.ref(getStrategy().getFullJavaIdentifier(foreignKey.getReferencedKey()), 2),
                 out.ref(getStrategy().getFullJavaIdentifier(foreignKey.getKeyTable()), 2),
                 escapeString(foreignKey.getOutputName()),
-                out.ref(getStrategy().getFullJavaIdentifiers(foreignKey.getKeyColumns()), colRefSegments(null)));
+                out.ref(getStrategy().getFullJavaIdentifiers(foreignKey.getKeyColumns()), colRefSegments(null)),
+                TableField.class,
+                out.ref(getStrategy().getJavaClassName(foreignKey.getTable(), Mode.RECORD)),
+                foreignKey.enforced());
         else
-            out.tab(2).println("public static final %s<%s, %s> %s = %s.createForeignKey(%s, %s, \"%s\", [[%s]]);",
+            out.tab(2).println("public static final %s<%s, %s> %s = %s.createForeignKey(%s, %s, \"%s\", new %s[] { [[%s]] }, %s);",
                 ForeignKey.class,
                 out.ref(getStrategy().getFullJavaClassName(foreignKey.getKeyTable(), Mode.RECORD)),
                 out.ref(getStrategy().getFullJavaClassName(foreignKey.getReferencedTable(), Mode.RECORD)),
@@ -1152,7 +1177,9 @@ public class JavaGenerator extends AbstractGenerator {
                 out.ref(getStrategy().getFullJavaIdentifier(foreignKey.getReferencedKey()), 2),
                 out.ref(getStrategy().getFullJavaIdentifier(foreignKey.getKeyTable()), 2),
                 escapeString(foreignKey.getOutputName()),
-                out.ref(getStrategy().getFullJavaIdentifiers(foreignKey.getKeyColumns()), colRefSegments(null)));
+                TableField.class,
+                out.ref(getStrategy().getFullJavaIdentifiers(foreignKey.getKeyColumns()), colRefSegments(null)),
+                foreignKey.enforced());
     }
 
     protected void generateRecords(SchemaDefinition schema) {
@@ -4038,19 +4065,55 @@ public class JavaGenerator extends AbstractGenerator {
             List<IndexDefinition> indexes = table.getIndexes();
 
             if (!indexes.isEmpty()) {
-                final List<String> indexFullIds = out.ref(getStrategy().getFullJavaIdentifiers(indexes), 2);
+                if (generateGlobalIndexReferences()) {
+                    final List<String> indexFullIds = out.ref(getStrategy().getFullJavaIdentifiers(indexes), 2);
 
-                if (scala) {
-                    out.println();
-                    out.tab(1).println("override def getIndexes : %s[ %s ] = {", List.class, Index.class);
-                    out.tab(2).println("return %s.asList[ %s ]([[%s]])", Arrays.class, Index.class, indexFullIds);
-                    out.tab(1).println("}");
+                    if (scala) {
+                        out.println();
+                        out.tab(1).println("override def getIndexes : %s[ %s ] = {", List.class, Index.class);
+                        out.tab(2).println("return %s.asList[ %s ]([[%s]])", Arrays.class, Index.class, indexFullIds);
+                        out.tab(1).println("}");
+                    }
+                    else {
+                        out.tab(1).overrideInherit();
+                        out.tab(1).println("public %s<%s> getIndexes() {", List.class, Index.class);
+                        out.tab(2).println("return %s.<%s>asList([[%s]]);", Arrays.class, Index.class, indexFullIds);
+                        out.tab(1).println("}");
+                    }
                 }
                 else {
-                    out.tab(1).overrideInherit();
-                    out.tab(1).println("public %s<%s> getIndexes() {", List.class, Index.class);
-                    out.tab(2).println("return %s.<%s>asList([[%s]]);", Arrays.class, Index.class, indexFullIds);
-                    out.tab(1).println("}");
+                    String separator = "";
+
+                    if (scala) {
+                        out.println();
+                        out.tab(1).println("override def getIndexes : %s[ %s ] = {", List.class, Index.class);
+                        out.tab(2).println("return %s.asList[ %s ](", Arrays.class, Index.class);
+
+                        for (IndexDefinition index : indexes) {
+                            out.tab(3).print("%s", separator);
+                            printCreateIndex(out, index);
+                            out.println();
+                            separator = ", ";
+                        }
+
+                        out.tab(2).println(")");
+                        out.tab(1).println("}");
+                    }
+                    else {
+                        out.tab(1).overrideInherit();
+                        out.tab(1).println("public %s<%s> getIndexes() {", List.class, Index.class);
+                        out.tab(2).println("return %s.<%s>asList(", Arrays.class, Index.class);
+
+                        for (IndexDefinition index : indexes) {
+                            out.tab(3).print("%s", separator);
+                            printCreateIndex(out, index);
+                            out.println();
+                            separator = ", ";
+                        }
+
+                        out.tab(2).println(");");
+                        out.tab(1).println("}");
+                    }
                 }
             }
         }
@@ -4182,7 +4245,6 @@ public class JavaGenerator extends AbstractGenerator {
 
                         out.tab(2).println(");");
                         out.tab(1).println("}");
-
                     }
                 }
             }
@@ -4247,7 +4309,7 @@ public class JavaGenerator extends AbstractGenerator {
 
             String separator = "  ";
             for (CheckConstraintDefinition c : cc) {
-                out.tab(3).println("%s%s.createCheck(this, %s.name(\"%s\"), \"%s\")", separator, Internal.class, DSL.class, c.getName().replace("\"", "\\\""), c.getCheckClause().replace("\"", "\\\""));
+                out.tab(3).println("%s%s.createCheck(this, %s.name(\"%s\"), \"%s\", %s)", separator, Internal.class, DSL.class, c.getName().replace("\"", "\\\""), c.getCheckClause().replace("\"", "\\\""), c.enforced());
                 separator = ", ";
             }
 
@@ -4623,6 +4685,8 @@ public class JavaGenerator extends AbstractGenerator {
             if (!printDeprecationIfUnknownType(out, seqTypeFull))
                 out.tab(1).javadoc("The sequence <code>%s</code>", sequence.getQualifiedOutputName());
 
+            boolean flags = generateSequenceFlags();
+
             if (scala)
                 out.tab(1).println("val %s : %s[%s] = %s.createSequence(\"%s\", %s, %s, %s, %s, %s, %s, %s, %s)",
                     seqId,
@@ -4632,12 +4696,13 @@ public class JavaGenerator extends AbstractGenerator {
                     seqName,
                     schemaId,
                     typeRef,
-                    sequence.getStartWith() != null ? sequence.getStartWith() + "L" : "null",
-                    sequence.getIncrementBy() != null ? sequence.getIncrementBy() + "L" : "null",
-                    sequence.getMinValue() != null ? sequence.getMinValue() + "L" : "null",
-                    sequence.getMaxValue() != null ? sequence.getMaxValue() + "L" : "null",
-                    sequence.getCycle(),
-                    sequence.getCache() != null ? sequence.getCache() + "L" : "null");
+                    flags ? numberLiteral(sequence.getStartWith()) : "null",
+                    flags ? numberLiteral(sequence.getIncrementBy()) : "null",
+                    flags ? numberLiteral(sequence.getMinvalue()) : "null",
+                    flags ? numberLiteral(sequence.getMaxvalue()) : "null",
+                    flags && sequence.getCycle(),
+                    flags ? numberLiteral(sequence.getCache()) : "null"
+                );
             else
                 out.tab(1).println("public static final %s<%s> %s = %s.<%s> createSequence(\"%s\", %s, %s, %s, %s, %s, %s, %s, %s);",
                     Sequence.class,
@@ -4648,12 +4713,12 @@ public class JavaGenerator extends AbstractGenerator {
                     seqName,
                     schemaId,
                     typeRef,
-                    sequence.getStartWith() != null ? sequence.getStartWith() + "L" : "null",
-                    sequence.getIncrementBy() != null ? sequence.getIncrementBy() + "L" : "null",
-                    sequence.getMinValue() != null ? sequence.getMinValue() + "L" : "null",
-                    sequence.getMaxValue() != null ? sequence.getMaxValue() + "L" : "null",
-                    sequence.getCycle(),
-                    sequence.getCache() != null ? sequence.getCache() + "L" : "null"
+                    flags ? numberLiteral(sequence.getStartWith()) : "null",
+                    flags ? numberLiteral(sequence.getIncrementBy()) : "null",
+                    flags ? numberLiteral(sequence.getMinvalue()) : "null",
+                    flags ? numberLiteral(sequence.getMaxvalue()) : "null",
+                    flags && sequence.getCycle(),
+                    flags ? numberLiteral(sequence.getCache()) : "null"
                 );
         }
 
@@ -4661,6 +4726,24 @@ public class JavaGenerator extends AbstractGenerator {
         closeJavaWriter(out);
 
         watch.splitInfo("Sequences generated");
+    }
+
+    private String numberLiteral(Number n) {
+        if (n instanceof BigInteger) {
+            BigInteger bi = (BigInteger) n;
+            int bitLength = ((BigInteger) n).bitLength();
+            if (bitLength > Long.SIZE - 1)
+                return "new java.math.BigInteger(\"" + bi.toString() + "\")";
+            else if (bitLength > Integer.SIZE - 1)
+                return Long.toString(n.longValue()) + 'L';
+            else
+                return Integer.toString(n.intValue());
+        }
+        else if (n instanceof Integer || n instanceof Short || n instanceof Byte)
+            return Integer.toString(n.intValue());
+        else if (n != null)
+            return Long.toString(n.longValue()) + 'L';
+        return "null";
     }
 
     private boolean containsConflictingDefinition(SchemaDefinition schema, List<? extends Definition> definitions) {
@@ -4681,8 +4764,8 @@ public class JavaGenerator extends AbstractGenerator {
     }
 
     protected void generateCatalog(CatalogDefinition catalog, JavaWriter out) {
-        final String catalogName = catalog.getQualifiedOutputName();
         final String catalogId = getStrategy().getJavaIdentifier(catalog);
+        final String catalogName = !catalog.getQualifiedOutputName().isEmpty() ? catalog.getQualifiedOutputName() : catalogId;
         final String className = getStrategy().getJavaClassName(catalog);
         final List<String> interfaces = out.ref(getStrategy().getJavaClassImplements(catalog, Mode.DEFAULT));
 
@@ -4711,6 +4794,12 @@ public class JavaGenerator extends AbstractGenerator {
 
         List<SchemaDefinition> schemas = new ArrayList<>();
         if (generateGlobalSchemaReferences()) {
+            Set<String> fieldNames = new HashSet<>();
+            fieldNames.add(catalogId);
+            for (SchemaDefinition schema : catalog.getSchemata())
+                if (generateSchemaIfEmpty(schema))
+                    fieldNames.add(getStrategy().getJavaIdentifier(schema));
+
             for (SchemaDefinition schema : catalog.getSchemata()) {
                 if (generateSchemaIfEmpty(schema)) {
                     schemas.add(schema);
@@ -4718,16 +4807,19 @@ public class JavaGenerator extends AbstractGenerator {
                     final String schemaClassName = out.ref(getStrategy().getFullJavaClassName(schema));
                     final String schemaId = getStrategy().getJavaIdentifier(schema);
                     final String schemaFullId = getStrategy().getFullJavaIdentifier(schema);
+                    String schemaShortId = out.ref(getStrategy().getFullJavaIdentifier(schema), 2);
+                    if (fieldNames.contains(schemaShortId.substring(0, schemaShortId.indexOf('.'))))
+                        schemaShortId = schemaFullId;
                     final String schemaComment = !StringUtils.isBlank(schema.getComment()) && generateCommentsOnSchemas()
                         ? escapeEntities(schema.getComment())
-                        : "The schema <code>" + schema.getQualifiedOutputName() + "</code>.";
+                        : "The schema <code>" + (!schema.getQualifiedOutputName().isEmpty() ? schema.getQualifiedOutputName() : schemaId) + "</code>.";
 
                     out.tab(1).javadoc(schemaComment);
 
                     if (scala)
-                        out.tab(1).println("val %s = %s", schemaId, schemaFullId);
+                        out.tab(1).println("val %s = %s", schemaId, schemaShortId);
                     else
-                        out.tab(1).println("public final %s %s = %s;", schemaClassName, schemaId, schemaFullId);
+                        out.tab(1).println("public final %s %s = %s;", schemaClassName, schemaId, schemaShortId);
                 }
             }
         }
@@ -4773,8 +4865,8 @@ public class JavaGenerator extends AbstractGenerator {
 
     protected void generateSchema(SchemaDefinition schema, JavaWriter out) {
         final String catalogId = out.ref(getStrategy().getFullJavaIdentifier(schema.getCatalog()), 2);
-        final String schemaName = schema.getQualifiedOutputName();
         final String schemaId = getStrategy().getJavaIdentifier(schema);
+        final String schemaName = !schema.getQualifiedOutputName().isEmpty() ? schema.getQualifiedOutputName() : schemaId;
         final String className = getStrategy().getJavaClassName(schema);
         final List<String> interfaces = out.ref(getStrategy().getJavaClassImplements(schema, Mode.DEFAULT));
 
@@ -4801,10 +4893,19 @@ public class JavaGenerator extends AbstractGenerator {
             out.tab(1).println("public static final %s %s = new %s();", className, schemaId, className);
 
             if (generateGlobalTableReferences()) {
+                Set<String> fieldNames = new HashSet<>();
+                fieldNames.add(schemaId);
+                for (TableDefinition table : schema.getTables()) {
+                    fieldNames.add(getStrategy().getJavaIdentifier(table));
+                }
+
                 for (TableDefinition table : schema.getTables()) {
                     final String tableClassName = out.ref(getStrategy().getFullJavaClassName(table));
                     final String tableId = getStrategy().getJavaIdentifier(table);
                     final String tableFullId = getStrategy().getFullJavaIdentifier(table);
+                    String tableShortId = out.ref(getStrategy().getFullJavaIdentifier(table), 2);
+                    if (fieldNames.contains(tableShortId.substring(0, tableShortId.indexOf('.'))))
+                        tableShortId = tableFullId;
                     final String tableComment = !StringUtils.isBlank(table.getComment()) && generateCommentsOnTables()
                         ? escapeEntities(table.getComment())
                         : "The table <code>" + table.getQualifiedOutputName() + "</code>.";
@@ -4812,9 +4913,9 @@ public class JavaGenerator extends AbstractGenerator {
                     out.tab(1).javadoc(tableComment);
 
                     if (scala)
-                        out.tab(1).println("val %s = %s", tableId, tableFullId);
+                        out.tab(1).println("val %s = %s", tableId, tableShortId);
                     else
-                        out.tab(1).println("public final %s %s = %s;", tableClassName, tableId, tableFullId);
+                        out.tab(1).println("public final %s %s = %s;", tableClassName, tableId, tableShortId);
 
                     // [#3797] Table-valued functions generate two different literals in
                     // globalObjectReferences
@@ -4844,10 +4945,12 @@ public class JavaGenerator extends AbstractGenerator {
         if (generateGlobalSequenceReferences())
             printReferences(out, database.getSequences(schema), Sequence.class, true);
 
-        if (generateGlobalTableReferences())
+        // [#9685] Avoid referencing table literals if they're not generated
+        if (generateTables())
             printReferences(out, database.getTables(schema), Table.class, true);
 
-        if (generateGlobalUDTReferences())
+        // [#9685] Avoid referencing UDT literals if they're not generated
+        if (generateUDTs())
             printReferences(out, database.getUDTs(schema), UDT.class, true);
 
         generateSchemaClassFooter(schema, out);
@@ -4919,36 +5022,48 @@ public class JavaGenerator extends AbstractGenerator {
 
             if (scala) {
                 out.tab(1).println("override def get%ss : %s[%s%s] = {", type.getSimpleName(), List.class, type, generic);
-                out.tab(2).println("val result = new %s[%s%s]", ArrayList.class, type, generic);
-                for (int i = 0; i < definitions.size(); i += INITIALISER_SIZE) {
-                    out.tab(2).println("result.addAll(get%ss%s)", type.getSimpleName(), i / INITIALISER_SIZE);
+                if (definitions.size() > INITIALISER_SIZE) {
+                    out.tab(2).println("val result = new %s[%s%s]", ArrayList.class, type, generic);
+                    for (int i = 0; i < definitions.size(); i += INITIALISER_SIZE) {
+                        out.tab(2).println("result.addAll(get%ss%s)", type.getSimpleName(), i / INITIALISER_SIZE);
+                    }
+                    out.tab(2).println("result");
                 }
-                out.tab(2).println("result");
+                else {
+                    out.tab(2).println("return %s.asList[%s%s]([[before=\n\t\t\t][separator=,\n\t\t\t][%s]])", Arrays.class, type, generic, references);
+                }
                 out.tab(1).println("}");
             }
             else {
                 out.tab(1).override();
                 out.tab(1).println("public final %s<%s%s> get%ss() {", List.class, type, generic, type.getSimpleName());
-                out.tab(2).println("%s result = new %s();", List.class, ArrayList.class);
-                for (int i = 0; i < definitions.size(); i += INITIALISER_SIZE) {
-                    out.tab(2).println("result.addAll(get%ss%s());", type.getSimpleName(), i / INITIALISER_SIZE);
+                if (definitions.size() > INITIALISER_SIZE) {
+                    out.tab(2).println("%s result = new %s();", List.class, ArrayList.class);
+                    for (int i = 0; i < definitions.size(); i += INITIALISER_SIZE) {
+                        out.tab(2).println("result.addAll(get%ss%s());", type.getSimpleName(), i / INITIALISER_SIZE);
+                    }
+                    out.tab(2).println("return result;");
                 }
-                out.tab(2).println("return result;");
+                else {
+                    out.tab(2).println("return %s.<%s%s>asList([[before=\n\t\t\t][separator=,\n\t\t\t][%s]]);", Arrays.class, type, generic, references);
+                }
                 out.tab(1).println("}");
             }
 
-            for (int i = 0; i < definitions.size(); i += INITIALISER_SIZE) {
-                out.println();
+            if (definitions.size() > INITIALISER_SIZE) {
+                for (int i = 0; i < definitions.size(); i += INITIALISER_SIZE) {
+                    out.println();
 
-                if (scala) {
-                    out.tab(1).println("private def get%ss%s(): %s[%s%s] = {", type.getSimpleName(), i / INITIALISER_SIZE, List.class, type, generic);
-                    out.tab(2).println("return %s.asList[%s%s]([[before=\n\t\t\t][separator=,\n\t\t\t][%s]])", Arrays.class, type, generic, references.subList(i, Math.min(i + INITIALISER_SIZE, references.size())));
-                    out.tab(1).println("}");
-                }
-                else {
-                    out.tab(1).println("private final %s<%s%s> get%ss%s() {", List.class, type, generic, type.getSimpleName(), i / INITIALISER_SIZE);
-                    out.tab(2).println("return %s.<%s%s>asList([[before=\n\t\t\t][separator=,\n\t\t\t][%s]]);", Arrays.class, type, generic, references.subList(i, Math.min(i + INITIALISER_SIZE, references.size())));
-                    out.tab(1).println("}");
+                    if (scala) {
+                        out.tab(1).println("private def get%ss%s(): %s[%s%s] = {", type.getSimpleName(), i / INITIALISER_SIZE, List.class, type, generic);
+                        out.tab(2).println("return %s.asList[%s%s]([[before=\n\t\t\t][separator=,\n\t\t\t][%s]])", Arrays.class, type, generic, references.subList(i, Math.min(i + INITIALISER_SIZE, references.size())));
+                        out.tab(1).println("}");
+                    }
+                    else {
+                        out.tab(1).println("private final %s<%s%s> get%ss%s() {", List.class, type, generic, type.getSimpleName(), i / INITIALISER_SIZE);
+                        out.tab(2).println("return %s.<%s%s>asList([[before=\n\t\t\t][separator=,\n\t\t\t][%s]]);", Arrays.class, type, generic, references.subList(i, Math.min(i + INITIALISER_SIZE, references.size())));
+                        out.tab(1).println("}");
+                    }
                 }
             }
         }
@@ -6133,11 +6248,7 @@ public class JavaGenerator extends AbstractGenerator {
     protected void printPackage(JavaWriter out, Definition definition, Mode mode) {
         printPackageComment(out, definition, mode);
 
-        if (scala)
-            out.println("package %s", getStrategy().getJavaPackageName(definition, mode));
-        else
-            out.println("package %s;", getStrategy().getJavaPackageName(definition, mode));
-
+        out.printPackageSpecification(getStrategy().getJavaPackageName(definition, mode));
         out.println();
         out.printImports();
         out.println();

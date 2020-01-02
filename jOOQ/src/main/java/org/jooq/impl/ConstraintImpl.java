@@ -51,8 +51,12 @@ import static org.jooq.impl.DSL.name;
 import static org.jooq.impl.DSL.table;
 import static org.jooq.impl.Keywords.K_CHECK;
 import static org.jooq.impl.Keywords.K_CONSTRAINT;
+import static org.jooq.impl.Keywords.K_DISABLE;
+import static org.jooq.impl.Keywords.K_ENABLE;
+import static org.jooq.impl.Keywords.K_ENFORCED;
 import static org.jooq.impl.Keywords.K_FOREIGN_KEY;
 import static org.jooq.impl.Keywords.K_NONCLUSTERED;
+import static org.jooq.impl.Keywords.K_NOT;
 import static org.jooq.impl.Keywords.K_NOT_ENFORCED;
 import static org.jooq.impl.Keywords.K_ON_DELETE;
 import static org.jooq.impl.Keywords.K_ON_UPDATE;
@@ -99,7 +103,6 @@ import org.jooq.Name;
 // ...
 import org.jooq.SQLDialect;
 import org.jooq.Table;
-import org.jooq.exception.DataAccessException;
 
 /**
  * @author Lukas Eder
@@ -142,8 +145,8 @@ implements
     /**
      * Generated UID
      */
-    private static final long                serialVersionUID             = 1018023703769802616L;
-    private static final Clause[]            CLAUSES                      = { CONSTRAINT };
+    private static final long            serialVersionUID             = 1018023703769802616L;
+    private static final Clause[]        CLAUSES                      = { CONSTRAINT };
 
 
 
@@ -151,14 +154,18 @@ implements
 
 
 
-    private Field<?>[]            unique;
-    private Field<?>[]            primaryKey;
-    private Field<?>[]            foreignKey;
-    private Table<?>              referencesTable;
-    private Field<?>[]            references;
-    private Action                onDelete;
-    private Action                onUpdate;
-    private Condition             check;
+    private Field<?>[]                   unique;
+    private Field<?>[]                   primaryKey;
+    private Field<?>[]                   foreignKey;
+    private Table<?>                     referencesTable;
+    private Field<?>[]                   references;
+    private Action                       onDelete;
+    private Action                       onUpdate;
+    private Condition                    check;
+
+
+
+
 
     ConstraintImpl() {
         this(null);
@@ -177,6 +184,10 @@ implements
     final Action      $onUpdate()        { return onUpdate; }
     final Condition   $check()           { return check; }
 
+
+
+
+
     // ------------------------------------------------------------------------
     // XXX: QueryPart API
     // ------------------------------------------------------------------------
@@ -188,16 +199,15 @@ implements
 
     @Override
     public final void accept(Context<?> ctx) {
-        if (TRUE.equals(ctx.data(DATA_CONSTRAINT_REFERENCE))) {
-            if (getQualifiedName().equals(AbstractName.NO_NAME))
-                throw new DataAccessException("Cannot ALTER or DROP CONSTRAINT without name");
+        boolean named = !getQualifiedName().equals(AbstractName.NO_NAME);
 
+        if (named && TRUE.equals(ctx.data(DATA_CONSTRAINT_REFERENCE))) {
             ctx.visit(getQualifiedName());
         }
         else {
             boolean qualify = ctx.qualify();
 
-            if (!getQualifiedName().equals(AbstractName.NO_NAME)) {
+            if (named) {
                 ctx.visit(K_CONSTRAINT)
                    .sql(' ')
                    .visit(getUnqualifiedName())
@@ -279,7 +289,12 @@ implements
                    .sql(')');
             }
 
-            if (!getQualifiedName().equals(AbstractName.NO_NAME)) {
+
+
+
+
+
+            if (named) {
 
 
 
@@ -294,6 +309,30 @@ implements
             }
         }
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // ------------------------------------------------------------------------
     // XXX: Constraint API
@@ -1106,6 +1145,22 @@ implements
     public final ConstraintImpl references(String table, String field1, String field2, String field3, String field4, String field5, String field6, String field7, String field8, String field9, String field10, String field11, String field12, String field13, String field14, String field15, String field16, String field17, String field18, String field19, String field20, String field21, String field22) {
         return references(table, new String[] { field1, field2, field3, field4, field5, field6, field7, field8, field9, field10, field11, field12, field13, field14, field15, field16, field17, field18, field19, field20, field21, field22 });
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

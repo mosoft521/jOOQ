@@ -38,6 +38,9 @@
 package org.jooq;
 
 import java.util.Collection;
+import java.util.List;
+
+import org.jooq.conf.Settings;
 
 /**
  * A version ID attached to a {@link Meta} description of a database.
@@ -57,67 +60,80 @@ public interface Version {
     Meta meta();
 
     /**
-     * Produce a migration from a previous version.
+     * Produce a migration to a new version.
+     * <p>
+     * In jOOQ's commercial distributions, this method allows for migrating
+     * between versions in any direction, regardless of which version was
+     * "first" in a version graph, or if the two versions are on different
+     * branches. The resulting queries are potentially destructive in such a
+     * case. Such destructive queries ("UNDO" migrations) are prevented by
+     * default, and can be turned on using
+     * {@link Settings#isMigrationAllowsUndo()}.
+     * <p>
+     * In jOOQ's Open Source Edition, this method only allows for migrating
+     * "forward".
      */
-    Queries migrateFrom(Version version);
+    Queries migrateTo(Version version);
 
     /**
      * Get the root version of this graph.
      */
     Version root();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /**
-     * Apply a change set to produce a new version.
+     * Get the parent versions of this version.
      */
-    Version apply(String id, Queries diff);
+    List<Version> parents();
 
     /**
-     * Apply a change set to produce a new version.
+     * Commit a new {@link Meta} representation to the version graph.
+     * <p>
+     * This calculates a migration path using {@link Meta#migrateTo(Meta)}.
+     */
+    Version commit(String id, Meta meta);
+
+    /**
+     * Commit a new {@link Meta} representation to the version graph.
+     *
+     * @see #commit(String, Meta)
+     */
+    Version commit(String id, String... meta);
+
+    /**
+     * Commit a new {@link Meta} representation to the version graph.
+     *
+     * @see #commit(String, Meta)
+     */
+    Version commit(String id, Source... meta);
+
+    /**
+     * Merge versions.
+     */
+    Version merge(String id, Version with);
+
+    /**
+     * Apply a migration to produce a new version.
+     */
+    Version apply(String id, Queries migration);
+
+    /**
+     * Apply a migration to produce a new version.
      *
      * @see #apply(String, Queries)
      */
-    Version apply(String id, Query... diff);
+    Version apply(String id, Query... migration);
 
     /**
-     * Apply a change set to produce a new version.
+     * Apply a migration to produce a new version.
      *
      * @see #apply(String, Queries)
      */
-    Version apply(String id, Collection<? extends Query> diff);
+    Version apply(String id, Collection<? extends Query> migration);
 
     /**
-     * Apply a change set to produce a new version.
+     * Apply a migration to produce a new version.
      *
      * @see #apply(String, Queries)
      */
-    Version apply(String id, String diff);
+    Version apply(String id, String migration);
 }

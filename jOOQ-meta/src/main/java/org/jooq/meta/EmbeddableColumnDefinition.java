@@ -43,12 +43,7 @@ package org.jooq.meta;
  *
  * @author Lukas Eder
  */
-public interface EmbeddableColumnDefinition extends TypedElementDefinition<EmbeddableDefinition> {
-
-    /**
-     * The column position in the embeddable type.
-     */
-    int getPosition();
+public interface EmbeddableColumnDefinition extends TypedElementDefinition<EmbeddableDefinition>, PositionedDefinition {
 
     /**
      * The backing column definition.

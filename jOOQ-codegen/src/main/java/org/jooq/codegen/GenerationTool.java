@@ -514,6 +514,7 @@ public class GenerationTool {
             database.setIncludePackageConstants(!FALSE.equals(d.isIncludePackageConstants()));
             database.setIncludeIndexes(!FALSE.equals(d.isIncludeIndexes()));
             database.setIncludeCheckConstraints(!FALSE.equals(d.isIncludeCheckConstraints()));
+            database.setIncludeSystemIndexes(TRUE.equals(d.isIncludeSystemIndexes()));
             database.setIncludeSystemCheckConstraints(TRUE.equals(d.isIncludeSystemCheckConstraints()));
             database.setIncludeInvisibleColumns(!FALSE.equals(d.isIncludeInvisibleColumns()));
             database.setIncludePrimaryKeys(!FALSE.equals(d.isIncludePrimaryKeys()));
@@ -652,6 +653,8 @@ public class GenerationTool {
                 generator.setGenerateRoutines(g.getGenerate().isRoutines());
             if (g.getGenerate().isSequences() != null)
                 generator.setGenerateSequences(g.getGenerate().isSequences());
+            if (g.getGenerate().isSequenceFlags() != null)
+                generator.setGenerateSequenceFlags(g.getGenerate().isSequenceFlags());
             if (g.getGenerate().isUdts() != null)
                 generator.setGenerateUDTs(g.getGenerate().isUdts());
             if (g.getGenerate().isTables() != null)
@@ -710,6 +713,8 @@ public class GenerationTool {
                 generator.setGenerateGlobalLinkReferences(g.getGenerate().isGlobalLinkReferences());
             if (g.getGenerate().isGlobalKeyReferences() != null)
                 generator.setGenerateGlobalKeyReferences(g.getGenerate().isGlobalKeyReferences());
+            if (g.getGenerate().isGlobalIndexReferences() != null)
+                generator.setGenerateGlobalIndexReferences(g.getGenerate().isGlobalIndexReferences());
             if (g.getGenerate().isJavadoc() != null)
                 generator.setGenerateJavadoc(g.getGenerate().isJavadoc());
             if (g.getGenerate().isComments() != null)

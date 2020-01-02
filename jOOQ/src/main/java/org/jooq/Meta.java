@@ -222,82 +222,76 @@ public interface Meta extends Scope {
     Queries ddl(DDLExportConfiguration configuration) throws DataAccessException;
 
     /**
-     * Apply a diff to this meta to produce a new {@link Meta}.
+     * Apply a migration to this meta to produce a new {@link Meta}.
      *
      * @see Parser#parse(String)
      * @throws DataAccessException If something went wrong fetching the meta
      *             objects
      */
-    Meta apply(String diff) throws DataAccessException;
+    Meta apply(String migration) throws DataAccessException;
 
     /**
-     * Apply a diff to this meta to produce a new {@link Meta}.
+     * Apply a migration to this meta to produce a new {@link Meta}.
      *
      * @throws DataAccessException If something went wrong fetching the meta
      *             objects
      */
-    Meta apply(Query... diff) throws DataAccessException;
+    Meta apply(Query... migration) throws DataAccessException;
 
     /**
-     * Apply a diff to this meta to produce a new {@link Meta}.
+     * Apply a migration to this meta to produce a new {@link Meta}.
      *
      * @throws DataAccessException If something went wrong fetching the meta
      *             objects
      */
-    Meta apply(Collection<? extends Query> diff) throws DataAccessException;
+    Meta apply(Collection<? extends Query> migration) throws DataAccessException;
 
     /**
-     * Apply a diff to this meta to produce a new {@link Meta}.
+     * Apply a migration to this meta to produce a new {@link Meta}.
      *
      * @throws DataAccessException If something went wrong fetching the meta
      *             objects
      */
-    Meta apply(Queries diff) throws DataAccessException;
+    Meta apply(Queries migration) throws DataAccessException;
 
+    /**
+     * Generate a migration script to get from this meta data to another one.
+     * <p>
+     * See {@link #migrateTo(Meta, MigrationConfiguration)} for more details.
+     *
+     * @throws DataAccessException If something went wrong fetching the meta
+     *             objects
+     * @see #migrateTo(Meta, MigrationConfiguration)
+     */
+    Queries migrateTo(Meta other) throws DataAccessException;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /**
+     * Generate a migration script to get from this meta data to another one.
+     * <p>
+     * To some extent, some database migrations can be generated automatically
+     * by comparing two versions of a schema. This is what
+     * <code>migrateTo()</code> does. It supports:
+     * <p>
+     * <ul>
+     * <li>Schema additions / removals</li>
+     * <li>Table additions / removals</li>
+     * <li>Column additions / removals</li>
+     * <li>Column data type changes</li>
+     * <li>Constraint additions / removals</li>
+     * <li>Index additions / removals</li>
+     * <li>Sequence additions / removals</li>
+     * <li>Comment additions / removals</li>
+     * </ul>
+     * <p>
+     * More complex, structural changes, such as moving some columns from one
+     * table to another, or turning a to-one relationship into a to-many
+     * relationship, as well as data migrations, can currently not be detected
+     * automatically.
+     *
+     * @throws DataAccessException If something went wrong fetching the meta
+     *             objects
+     */
+    Queries migrateTo(Meta other, MigrationConfiguration configuration) throws DataAccessException;
 
     /**
      * Export to the {@link InformationSchema} format.

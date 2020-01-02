@@ -44,6 +44,7 @@ import static org.jooq.util.xml.jaxb.TableConstraintType.PRIMARY_KEY;
 import static org.jooq.util.xml.jaxb.TableConstraintType.UNIQUE;
 
 import java.io.StringWriter;
+import java.math.BigInteger;
 import java.util.List;
 
 import org.jooq.SortOrder;
@@ -62,6 +63,7 @@ import org.jooq.meta.SchemaDefinition;
 import org.jooq.meta.SequenceDefinition;
 import org.jooq.meta.TableDefinition;
 import org.jooq.meta.UniqueKeyDefinition;
+import org.jooq.tools.Convert;
 import org.jooq.tools.JooqLogger;
 import org.jooq.tools.StringUtils;
 import org.jooq.util.jaxb.tools.MiniJAXB;
@@ -221,20 +223,21 @@ public class XMLGenerator extends AbstractGenerator {
                     TableDefinition table = u.getTable();
                     List<ColumnDefinition> columns = u.getKeyColumns();
 
-                    TableConstraint constraint = new TableConstraint();
-                    constraint.setConstraintCatalog(catalogName);
-                    constraint.setConstraintSchema(schemaName);
-                    constraint.setConstraintName(constraintName);
-                    constraint.setConstraintType(u.isPrimaryKey() ? PRIMARY_KEY : UNIQUE);
+                    TableConstraint tc = new TableConstraint();
+                    tc.setConstraintCatalog(catalogName);
+                    tc.setConstraintSchema(schemaName);
+                    tc.setConstraintName(constraintName);
+                    tc.setConstraintType(u.isPrimaryKey() ? PRIMARY_KEY : UNIQUE);
 
                     if (generateCommentsOnKeys())
-                        constraint.setComment(u.getComment());
+                        tc.setComment(u.getComment());
 
-                    constraint.setTableCatalog(table.getCatalog().getOutputName());
-                    constraint.setTableSchema(table.getSchema().getOutputName());
-                    constraint.setTableName(table.getOutputName());
+                    tc.setTableCatalog(table.getCatalog().getOutputName());
+                    tc.setTableSchema(table.getSchema().getOutputName());
+                    tc.setTableName(table.getOutputName());
+                    tc.setEnforced(u.enforced());
 
-                    is.getTableConstraints().add(constraint);
+                    is.getTableConstraints().add(tc);
 
                     for (int i = 0; i < columns.size(); i++) {
                         ColumnDefinition column = columns.get(i);
@@ -272,6 +275,7 @@ public class XMLGenerator extends AbstractGenerator {
                     tc.setTableCatalog(table.getCatalog().getOutputName());
                     tc.setTableSchema(table.getSchema().getOutputName());
                     tc.setTableName(table.getOutputName());
+                    tc.setEnforced(f.enforced());
 
                     ReferentialConstraint rc = new ReferentialConstraint();
                     rc.setConstraintCatalog(catalogName);
@@ -318,6 +322,7 @@ public class XMLGenerator extends AbstractGenerator {
                     tc.setTableCatalog(table.getCatalog().getOutputName());
                     tc.setTableSchema(table.getSchema().getOutputName());
                     tc.setTableName(table.getOutputName());
+                    tc.setEnforced(ch.enforced());
 
                     is.getTableConstraints().add(tc);
 
@@ -346,6 +351,13 @@ public class XMLGenerator extends AbstractGenerator {
                     sequence.setDataType(type.getType());
                     sequence.setNumericPrecision(type.getPrecision());
                     sequence.setNumericScale(type.getScale());
+
+                    sequence.setStartValue(Convert.convert(se.getStartWith(), BigInteger.class));
+                    sequence.setIncrement(Convert.convert(se.getIncrementBy(), BigInteger.class));
+                    sequence.setMinimumValue(Convert.convert(se.getMinvalue(), BigInteger.class));
+                    sequence.setMaximumValue(Convert.convert(se.getMaxvalue(), BigInteger.class));
+                    sequence.setCycleOption(se.getCycle());
+                    sequence.setCache(Convert.convert(se.getCache(), BigInteger.class));
 
                     is.getSequences().add(sequence);
                 }

@@ -37,20 +37,35 @@
  */
 package org.jooq.impl;
 
+import static java.lang.Boolean.FALSE;
+import static java.lang.Boolean.TRUE;
+import static org.jooq.impl.DSL.createSchemaIfNotExists;
+import static org.jooq.impl.DSL.dropSchemaIfExists;
+import static org.jooq.impl.DSL.dropTableIfExists;
+import static org.jooq.impl.DSL.inline;
+import static org.jooq.impl.DSL.name;
+import static org.jooq.impl.DSL.schema;
+import static org.jooq.impl.MigrationImpl.Status.FAILURE;
+import static org.jooq.impl.MigrationImpl.Status.MIGRATING;
+import static org.jooq.impl.MigrationImpl.Status.REVERTING;
+import static org.jooq.impl.MigrationImpl.Status.STARTING;
+import static org.jooq.impl.MigrationImpl.Status.SUCCESS;
+
 import java.sql.Timestamp;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 import org.jooq.Configuration;
 import org.jooq.Constants;
-import org.jooq.ContextTransactionalCallable;
+import org.jooq.ContextTransactionalRunnable;
 import org.jooq.Field;
 import org.jooq.Identity;
+import org.jooq.Meta;
 import org.jooq.Migration;
 import org.jooq.MigrationListener;
-import org.jooq.MigrationResult;
 import org.jooq.Name;
 import org.jooq.Queries;
 import org.jooq.Query;
@@ -60,8 +75,11 @@ import org.jooq.Table;
 import org.jooq.TableField;
 import org.jooq.UniqueKey;
 import org.jooq.Version;
+import org.jooq.Versions;
+import org.jooq.conf.InterpreterSearchSchema;
 import org.jooq.exception.DataAccessException;
-import org.jooq.exception.DataDefinitionException;
+import org.jooq.exception.DataMigrationException;
+import org.jooq.exception.DataMigrationValidationException;
 import org.jooq.tools.JooqLogger;
 import org.jooq.tools.StopWatch;
 
@@ -77,7 +95,7 @@ final class MigrationImpl extends AbstractScope implements Migration {
     private final Version                        to;
     private Version                              from;
     private Queries                              queries;
-    private Map<String, Version>                 versions;
+    private Versions                             versions;
 
     MigrationImpl(Configuration configuration, Version to) {
         super(configuration.derive(new ThreadLocalTransactionProvider(configuration.systemConnectionProvider())));
@@ -87,17 +105,10 @@ final class MigrationImpl extends AbstractScope implements Migration {
 
     @Override
     public final Version from() {
-        if (from == null) {
+        if (from == null)
 
             // TODO: Use pessimistic locking so no one else can migrate in between
-            JooqMigrationsChangelogRecord currentRecord =
-            dsl().selectFrom(CHANGELOG)
-                 .orderBy(CHANGELOG.MIGRATED_AT.desc(), CHANGELOG.ID.desc())
-                 .limit(1)
-                 .fetchOne();
-
-            from = currentRecord == null ? to().root() : versions().get(currentRecord.getMigratedTo());
-        }
+            from = currentVersion();
 
         return from;
     }
@@ -110,43 +121,124 @@ final class MigrationImpl extends AbstractScope implements Migration {
     @Override
     public final Queries queries() {
         if (queries == null)
-            queries = to().migrateFrom(from());
+            queries = from().migrateTo(to());
 
         return queries;
     }
 
-    private final Map<String, Version> versions() {
-        if (versions == null) {
-            versions = new HashMap<>();
-
-            for (Version version : configuration().versionProvider().provide())
-                versions.put(version.id(), version);
-        }
+    private final Versions versions() {
+        if (versions == null)
+            versions = configuration().versionProvider().provide();
 
         return versions;
     }
 
-    private static final MigrationResult MIGRATION_RESULT = new MigrationResult() {};
+    @Override
+    public final void validate() {
+        validate0(migrationContext());
+    }
+
+    private final void validate0(DefaultMigrationContext ctx) {
+        JooqMigrationsChangelogRecord currentRecord = currentChangelogRecord();
+
+        if (currentRecord != null) {
+            Version currentVersion = versions().get(currentRecord.getMigratedTo());
+
+            if (currentVersion == null)
+                throw new DataMigrationValidationException("Version currently installed is not available from VersionProvider: " + currentRecord.getMigratedTo());
+        }
+
+        validateVersionProvider(from());
+        validateVersionProvider(to());
+        revertUntracked(ctx, null);
+    }
+
+    private final void validateVersionProvider(Version version) {
+        if (versions().get(version.id()) == null)
+            throw new DataMigrationValidationException("Version is not available from VersionProvider: " + version.id());
+    }
+
+    private final Collection<Schema> lookup(List<Schema> schemas) {
+
+        // TODO: Refactor usages of getInterpreterSearchPath()
+        Collection<Schema> result = schemas;
+        List<InterpreterSearchSchema> searchPath = dsl().settings().getInterpreterSearchPath();
+
+        if (!searchPath.isEmpty()) {
+            result = new HashSet<>();
+            Schema defaultSchema = schema(name(searchPath.get(0).getCatalog(), searchPath.get(0).getSchema()));
+
+            for (Schema schema : schemas)
+                if (schema.getQualifiedName().empty())
+                    result.add(defaultSchema);
+                else
+                    result.add(schema);
+        }
+
+        return result;
+    }
+
+    private final Queries revertUntrackedQueries() {
+        Version currentVersion = currentVersion();
+        Meta currentMeta = currentVersion.meta();
+
+        Set<Schema> expectedSchemas = new HashSet<>();
+        expectedSchemas.addAll(lookup(from().meta().getSchemas()));
+        expectedSchemas.addAll(lookup(to().meta().getSchemas()));
+
+        // TODO Add a settings governing what schemas we're including in the migration
+        //      The current implementation will default to migrating all schemas that are
+        //      touched by the from() or to() version
+        Meta existingMeta = dsl().meta();
+        for (Schema schema : existingMeta.getSchemas()) {
+
+            // TODO Why is this qualification necessary?
+            existingMeta = existingMeta.apply(dropTableIfExists(schema.getQualifiedName().append(CHANGELOG.getUnqualifiedName())).cascade());
+
+            if (!expectedSchemas.contains(schema))
+                existingMeta = existingMeta.apply(dropSchemaIfExists(schema).cascade());
+            else
+                currentMeta = currentMeta.apply(createSchemaIfNotExists(schema));
+        }
+
+        return existingMeta.migrateTo(currentMeta);
+    }
+
+    private final void revertUntracked(DefaultMigrationContext ctx, MigrationListener listener) {
+        if (ctx.revertUntrackedQueries.queries().length > 0)
+            if (!TRUE.equals(dsl().settings().isMigrationRevertUntracked()))
+                throw new DataMigrationValidationException("Non-empty difference between actual schema and migration from schema: " + ctx.revertUntrackedQueries);
+            else if (listener != null)
+                execute(ctx, listener, ctx.revertUntrackedQueries);
+    }
+
+    private final DefaultMigrationContext migrationContext() {
+        return new DefaultMigrationContext(configuration(), from(), to(), queries(), revertUntrackedQueries());
+    }
 
     @Override
-    public final MigrationResult migrate() throws DataDefinitionException {
+    public final void execute() {
 
         // TODO: Transactions don't really make sense in most dialects. In some, they do
         //       e.g. PostgreSQL supports transactional DDL. Check if we're getting this right.
-        return run(new ContextTransactionalCallable<MigrationResult>() {
+        run(new ContextTransactionalRunnable() {
             @Override
-            public MigrationResult run() {
-                DefaultMigrationContext ctx = new DefaultMigrationContext(configuration(), from(), to(), queries());
+            public void run() {
+                DefaultMigrationContext ctx = migrationContext();
                 MigrationListener listener = new MigrationListeners(configuration);
+
+                if (!FALSE.equals(dsl().settings().isMigrationAutoValidation()))
+                    validate0(ctx);
 
                 try {
                     listener.migrationStart(ctx);
 
                     if (from().equals(to())) {
                         log.info("jOOQ Migrations", "Version " + to().id() + " is already installed as the current version.");
-                        return MIGRATION_RESULT;
+                        return;
                     }
 
+                    // TODO: What to do if we're about to install things on a non-empty schema
                     // TODO: Implement preconditions
                     // TODO: Implement a listener with a variety of pro / oss features
                     // TODO: Implement additional out-of-the-box sanity checks
@@ -154,6 +246,9 @@ final class MigrationImpl extends AbstractScope implements Migration {
                     // TODO: Add some migration settings, e.g. whether CHANGELOG.SQL should be filled
                     // TODO: Migrate the CHANGELOG table with the Migration API
                     // TODO: Create an Enum for CHANGELOG.STATUS
+                    // TODO: Add CHANGELOG.USERNAME and HOSTNAME columns
+                    // TODO: Add CHANGELOG.COMMENTS column
+                    // TODO: Replace (MIGRATED_AT, MIGRATION_TIME) by (MIGRATION_START, MIGRATION_END)
 
                     log.info("jOOQ Migrations", "Version " + from().id() + " is migrated to " + to().id());
 
@@ -164,60 +259,68 @@ final class MigrationImpl extends AbstractScope implements Migration {
                         for (Query query : queries())
                             log.debug("jOOQ Migrations", dsl().renderInlined(query));
 
-                    JooqMigrationsChangelogRecord newRecord = dsl().newRecord(CHANGELOG);
-
-                    newRecord
-                        .setJooqVersion(Constants.VERSION)
-                        .setMigratedAt(new Timestamp(System.currentTimeMillis()))
-                        .setMigratedFrom(from().id())
-                        .setMigratedTo(to().id())
-                        .setMigrationTime(0L)
-                        .setSql(queries().toString())
-                        .setSqlCount(queries().queries().length)
-                        .setStatus("PENDING")
-                        .insert();
+                    JooqMigrationsChangelogRecord record = createRecord(STARTING);
 
                     try {
-
-                        // TODO: Can we access the individual Queries from Version, if applicable?
-                        // TODO: Set the ctx.queriesFrom(), ctx.queriesTo(), and ctx.queries() values
-                        listener.queriesStart(ctx);
-
-                        // TODO: Make batching an option: queries().executeBatch();
-                        for (Query query : queries().queries()) {
-                            ctx.query(query);
-                            listener.queryStart(ctx);
-                            query.execute();
-                            listener.queryEnd(ctx);
-                            ctx.query(null);
-                        }
-
-                        listener.queriesEnd(ctx);
-
-                        newRecord
-                            .setMigrationTime(watch.split() / 1000000L)
-                            .setStatus("SUCCESS")
-                            .update();
+                        log(watch, record, REVERTING);
+                        revertUntracked(ctx, listener);
+                        log(watch, record, MIGRATING);
+                        execute(ctx, listener, queries());
+                        log(watch, record, SUCCESS);
                     }
                     catch (DataAccessException e) {
 
                         // TODO: Make sure this is committed, given that we're re-throwing the exception.
                         // TODO: How can we recover from failure?
-                        newRecord
-                            .setMigrationTime(watch.split() / 1000000L)
-                            .setStatus("FAILURE")
-                            .update();
-
+                        log(watch, record, FAILURE);
                         throw e;
                     }
-
-                    return MIGRATION_RESULT;
                 }
                 finally {
                     listener.migrationEnd(ctx);
                 }
             }
+
+            private final JooqMigrationsChangelogRecord createRecord(Status status) {
+                JooqMigrationsChangelogRecord record = dsl().newRecord(CHANGELOG);
+
+                record
+                    .setJooqVersion(Constants.VERSION)
+                    .setMigratedAt(new Timestamp(System.currentTimeMillis()))
+                    .setMigratedFrom(from().id())
+                    .setMigratedTo(to().id())
+                    .setMigrationTime(0L)
+                    .setSql(queries().toString())
+                    .setSqlCount(queries().queries().length)
+                    .setStatus(status)
+                    .insert();
+
+                return record;
+            }
+
+            private final void log(StopWatch watch, JooqMigrationsChangelogRecord record, Status status) {
+                record.setMigrationTime(watch.split() / 1000000L)
+                      .setStatus(status)
+                      .update();
+            }
         });
+    }
+
+    private final void execute(DefaultMigrationContext ctx, MigrationListener listener, Queries q) {
+        // TODO: Can we access the individual Queries from Version, if applicable?
+        // TODO: Set the ctx.queriesFrom(), ctx.queriesTo(), and ctx.queries() values
+        listener.queriesStart(ctx);
+
+        // TODO: Make batching an option: queries().executeBatch();
+        for (Query query : q.queries()) {
+            ctx.query(query);
+            listener.queryStart(ctx);
+            query.execute();
+            listener.queryEnd(ctx);
+            ctx.query(null);
+        }
+
+        listener.queriesEnd(ctx);
     }
 
     /**
@@ -227,7 +330,7 @@ final class MigrationImpl extends AbstractScope implements Migration {
     public final void init() {
 
         // TODO: What to do when initialising jOOQ-migrations on an existing database?
-        //       - Should there be init() commands that can be run explicitl by the user?
+        //       - Should there be init() commands that can be run explicitly by the user?
         //       - Will we reverse engineer the production Meta snapshot first?
         if (!existsChangelog())
             dsl().meta(CHANGELOG).ddl().executeBatch();
@@ -245,9 +348,69 @@ final class MigrationImpl extends AbstractScope implements Migration {
         return false;
     }
 
-    private final <T> T run(final ContextTransactionalCallable<T> runnable) {
-        init();
-        return dsl().transactionResult(runnable);
+    private final JooqMigrationsChangelogRecord currentChangelogRecord() {
+        return existsChangelog()
+            ? dsl().selectFrom(CHANGELOG)
+
+                   // TODO: How to recover from failure?
+                   .where(CHANGELOG.STATUS.eq(inline(SUCCESS)))
+                   .orderBy(CHANGELOG.MIGRATED_AT.desc(), CHANGELOG.ID.desc())
+                   .limit(1)
+                   .fetchOne()
+            : null;
+    }
+
+    private final Version currentVersion() {
+        JooqMigrationsChangelogRecord currentRecord = currentChangelogRecord();
+
+        if (currentRecord == null) {
+            Version result = to().root();
+
+            if (result == null)
+                throw new DataMigrationValidationException("VersionProvider did not provide a root version for " + to().id());
+
+            return result;
+        }
+        else {
+            Version result = versions().get(currentRecord.getMigratedTo());
+
+            if (result == null)
+                throw new DataMigrationValidationException("VersionProvider did not provide a version for " + currentRecord.getMigratedTo());
+
+            return result;
+        }
+    }
+
+    private final void run(final ContextTransactionalRunnable runnable) {
+        try {
+            init();
+            dsl().transaction(runnable);
+        }
+        catch (DataMigrationException e) {
+            throw e;
+        }
+        catch (Exception e) {
+            throw new DataMigrationException("Exception during migration", e);
+        }
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("-- Migration\n--   From: ").append(from().id()).append("\n")
+          .append("--   To  : ").append(to().id()).append("\n")
+          .append(queries());
+
+        return sb.toString();
+    }
+
+    enum Status {
+        STARTING,
+        REVERTING,
+        MIGRATING,
+        SUCCESS,
+        FAILURE
     }
 
     // -------------------------------------------------------------------------
@@ -324,7 +487,7 @@ final class MigrationImpl extends AbstractScope implements Migration {
         /**
          * The column <code>JOOQ_MIGRATIONS_CHANGELOG.JOOQ_VERSION</code>. The jOOQ version used to migrate to this database version.
          */
-        public final TableField<JooqMigrationsChangelogRecord, String> STATUS = createField(DSL.name("STATUS"), org.jooq.impl.SQLDataType.VARCHAR(10).nullable(false), this, "The database version installation status.");
+        public final TableField<JooqMigrationsChangelogRecord, Status> STATUS = createField(DSL.name("STATUS"), org.jooq.impl.SQLDataType.VARCHAR(10).nullable(false).asConvertedDataType(new EnumConverter(String.class, Status.class)), this, "The database version installation status.");
 
         /**
          * Create a <code>JOOQ_MIGRATIONS_CHANGELOG</code> table reference
@@ -509,7 +672,7 @@ final class MigrationImpl extends AbstractScope implements Migration {
         /**
          * Setter for <code>JOOQ_MIGRATIONS_CHANGELOG.STATUS</code>. The database version installation status.
          */
-        public JooqMigrationsChangelogRecord setStatus(String value) {
+        public JooqMigrationsChangelogRecord setStatus(Status value) {
             set(8, value);
             return this;
         }
@@ -517,8 +680,8 @@ final class MigrationImpl extends AbstractScope implements Migration {
         /**
          * Getter for <code>JOOQ_MIGRATIONS_CHANGELOG.STATUS</code>. The database version installation status.
          */
-        public String getStatus() {
-            return (String) get(8);
+        public Status getStatus() {
+            return (Status) get(8);
         }
 
         // -------------------------------------------------------------------------

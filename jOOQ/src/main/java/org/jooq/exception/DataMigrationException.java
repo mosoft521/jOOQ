@@ -35,21 +35,38 @@
  *
  *
  */
-package org.jooq.impl;
+package org.jooq.exception;
 
-import java.util.Comparator;
-
-import org.jooq.Named;
+import org.jooq.Migration;
 
 /**
+ * An error occurred while running a {@link Migration}.
+ *
  * @author Lukas Eder
  */
-final class NamedComparator implements Comparator<Named> {
+public class DataMigrationException extends DataAccessException {
 
-    static final NamedComparator INSTANCE = new NamedComparator();
+    /**
+     * Generated UID
+     */
+    private static final long serialVersionUID = -6460945824599280420L;
 
-    @Override
-    public final int compare(Named o1, Named o2) {
-        return o1.getQualifiedName().compareTo(o2.getQualifiedName());
+    /**
+     * Constructor for DataMigrationException.
+     *
+     * @param message the detail message
+     */
+    public DataMigrationException(String message) {
+        super(message);
+    }
+
+    /**
+     * Constructor for DataMigrationException.
+     *
+     * @param message the detail message
+     * @param cause the cause
+     */
+    public DataMigrationException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

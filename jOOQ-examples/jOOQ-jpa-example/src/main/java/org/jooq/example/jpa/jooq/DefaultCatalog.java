@@ -4,7 +4,6 @@
 package org.jooq.example.jpa.jooq;
 
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -18,17 +17,17 @@ import org.jooq.impl.CatalogImpl;
 @SuppressWarnings({ "all", "unchecked", "rawtypes" })
 public class DefaultCatalog extends CatalogImpl {
 
-    private static final long serialVersionUID = -379550258;
+    private static final long serialVersionUID = 1220415520;
 
     /**
-     * The reference instance of <code></code>
+     * The reference instance of <code>DEFAULT_CATALOG</code>
      */
     public static final DefaultCatalog DEFAULT_CATALOG = new DefaultCatalog();
 
     /**
-     * The schema <code></code>.
+     * The schema <code>DEFAULT_SCHEMA</code>.
      */
-    public final DefaultSchema DEFAULT_SCHEMA = org.jooq.example.jpa.jooq.DefaultSchema.DEFAULT_SCHEMA;
+    public final DefaultSchema DEFAULT_SCHEMA = DefaultSchema.DEFAULT_SCHEMA;
 
     /**
      * No further instances allowed
@@ -39,12 +38,6 @@ public class DefaultCatalog extends CatalogImpl {
 
     @Override
     public final List<Schema> getSchemas() {
-        List result = new ArrayList();
-        result.addAll(getSchemas0());
-        return result;
-    }
-
-    private final List<Schema> getSchemas0() {
         return Arrays.<Schema>asList(
             DefaultSchema.DEFAULT_SCHEMA);
     }

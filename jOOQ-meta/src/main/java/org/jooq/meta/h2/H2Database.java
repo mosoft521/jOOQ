@@ -37,9 +37,13 @@
  */
 package org.jooq.meta.h2;
 
+import static org.jooq.impl.DSL.condition;
+import static org.jooq.impl.DSL.falseCondition;
 import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.inline;
 import static org.jooq.impl.DSL.name;
+import static org.jooq.impl.DSL.noCondition;
+import static org.jooq.impl.DSL.not;
 import static org.jooq.impl.DSL.nullif;
 import static org.jooq.impl.DSL.one;
 import static org.jooq.impl.DSL.select;
@@ -66,6 +70,7 @@ import org.jooq.Record;
 import org.jooq.Record4;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
+import org.jooq.Select;
 import org.jooq.SortOrder;
 import org.jooq.Table;
 import org.jooq.TableField;
@@ -111,6 +116,7 @@ import org.jooq.util.h2.H2DataType;
  */
 public class H2Database extends AbstractDatabase {
 
+    private static final long DEFAULT_SEQUENCE_CACHE    = 32;
     private static final long DEFAULT_SEQUENCE_MAXVALUE = Long.MAX_VALUE;
 
     @Override
@@ -144,6 +150,9 @@ public class H2Database extends AbstractDatabase {
                 Indexes.ASC_OR_DESC)
             .from(INDEXES)
             .where(Indexes.TABLE_SCHEMA.in(getInputSchemata()))
+            .and(getIncludeSystemIndexes()
+                ? noCondition()
+                : not(condition(Indexes.IS_GENERATED)))
             .orderBy(
                 Indexes.TABLE_SCHEMA,
                 Indexes.TABLE_NAME,
@@ -316,7 +325,20 @@ public class H2Database extends AbstractDatabase {
     @Override
     protected void loadCheckConstraints(DefaultRelations relations) throws SQLException {
 
-        // TODO: Should we really UNION INFORMATION_SCHEMA.COLUMNS.CHECK_CONSTRAINT?
+        // TODO [https://github.com/h2database/h2database/issues/2286]
+        // Starting from H2 1.4.201, we should no longer produce the below UNION
+        Select<Record4<String, String, String, String>> inlineChecks = is1_4_201()
+            ? select(inline(""), inline(""), inline(""), inline("")).where(falseCondition())
+            : select(
+                Columns.TABLE_SCHEMA,
+                Columns.TABLE_NAME,
+                Columns.CHECK_CONSTRAINT,
+                Columns.CHECK_CONSTRAINT
+            )
+            .from(COLUMNS)
+            .where(Columns.CHECK_CONSTRAINT.nvl("").ne(""))
+            .and(Columns.TABLE_SCHEMA.in(getInputSchemata()));
+
         for (Record record : create()
             .select(
                 Constraints.TABLE_SCHEMA,
@@ -327,17 +349,7 @@ public class H2Database extends AbstractDatabase {
             .from(CONSTRAINTS)
             .where(Constraints.CONSTRAINT_TYPE.eq("CHECK"))
             .and(Constraints.TABLE_SCHEMA.in(getInputSchemata()))
-            .union(
-            select(
-                Columns.TABLE_SCHEMA,
-                Columns.TABLE_NAME,
-                Columns.CHECK_CONSTRAINT,
-                Columns.CHECK_CONSTRAINT
-            )
-            .from(COLUMNS)
-            .where(Columns.CHECK_CONSTRAINT.nvl("").ne(""))
-            .and(Columns.TABLE_SCHEMA.in(getInputSchemata())))
-            .fetch()) {
+            .union(inlineChecks)) {
 
             SchemaDefinition schema = getSchema(record.get(Constraints.TABLE_SCHEMA));
 
@@ -388,12 +400,12 @@ public class H2Database extends AbstractDatabase {
         for (Record record : create().select(
                     Sequences.SEQUENCE_SCHEMA,
                     Sequences.SEQUENCE_NAME,
-                    Sequences.INCREMENT,
-                    Sequences.MIN_VALUE,
+                    nullif(Sequences.INCREMENT, one()).as(Sequences.INCREMENT),
+                    nullif(Sequences.MIN_VALUE, one()).as(Sequences.MIN_VALUE),
                     nullif(Sequences.MAX_VALUE, inline(DEFAULT_SEQUENCE_MAXVALUE)).as(Sequences.MAX_VALUE),
                     Sequences.IS_CYCLE,
-                    Sequences.CACHE
-                    )
+                    nullif(Sequences.CACHE, inline(DEFAULT_SEQUENCE_CACHE)).as(Sequences.CACHE)
+                )
                 .from(SEQUENCES)
                 .where(Sequences.SEQUENCE_SCHEMA.in(getInputSchemata()))
                 .and(Sequences.SEQUENCE_NAME.upper().notLike("SYSTEM!_SEQUENCE!_%", '!'))
@@ -646,6 +658,7 @@ public class H2Database extends AbstractDatabase {
 
     private static Boolean is1_4_197;
     private static Boolean is1_4_198;
+    private static Boolean is1_4_201;
 
     boolean is1_4_197() {
 
@@ -663,5 +676,15 @@ public class H2Database extends AbstractDatabase {
             is1_4_198 = exists(Columns.IS_VISIBLE);
 
         return is1_4_198;
+    }
+
+    boolean is1_4_201() {
+
+        // [https://github.com/h2database/h2database/issues/2286]
+        // The COLUMNS.CHECK_CONSTRAINT column was removed backwards incompatibly in H2 1.4.201
+        if (is1_4_201 == null)
+            is1_4_201 = !exists(Columns.CHECK_CONSTRAINT);
+
+        return is1_4_201;
     }
 }

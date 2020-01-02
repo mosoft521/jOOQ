@@ -50,7 +50,7 @@ import static org.jooq.JoinType.JOIN;
 // ...
 import static org.jooq.conf.ParseWithMetaLookups.IGNORE_ON_FAILURE;
 import static org.jooq.conf.ParseWithMetaLookups.THROW_ON_FAILURE;
-import static org.jooq.conf.SettingsTools.renderLocale;
+import static org.jooq.conf.SettingsTools.parseLocale;
 import static org.jooq.impl.AbstractName.NO_NAME;
 import static org.jooq.impl.DSL.abs;
 import static org.jooq.impl.DSL.acos;
@@ -311,7 +311,7 @@ import static org.jooq.impl.Tools.EMPTY_NAME;
 import static org.jooq.impl.Tools.EMPTY_QUERYPART;
 import static org.jooq.impl.Tools.EMPTY_ROWN;
 import static org.jooq.impl.Tools.EMPTY_SORTFIELD;
-import static org.jooq.tools.StringUtils.defaultIfNull;
+import static org.jooq.impl.Tools.normaliseNameCase;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
@@ -327,6 +327,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -360,6 +361,7 @@ import org.jooq.Comparator;
 import org.jooq.Condition;
 import org.jooq.Configuration;
 import org.jooq.Constraint;
+import org.jooq.ConstraintEnforcementStep;
 import org.jooq.ConstraintForeignKeyOnStep;
 import org.jooq.ConstraintTypeStep;
 import org.jooq.CreateIndexFinalStep;
@@ -486,7 +488,6 @@ import org.jooq.WindowSpecificationExcludeStep;
 import org.jooq.WindowSpecificationOrderByStep;
 import org.jooq.WindowSpecificationRowsAndStep;
 import org.jooq.WindowSpecificationRowsStep;
-import org.jooq.conf.ParseNameCase;
 import org.jooq.conf.ParseSearchSchema;
 import org.jooq.conf.ParseUnknownFunctions;
 import org.jooq.conf.ParseUnsupportedSyntax;
@@ -3183,6 +3184,7 @@ final class ParserImpl implements Parser {
         List<Constraint> constraints = new ArrayList<>();
         List<Index> indexes = new ArrayList<>();
         boolean primary = false;
+        boolean identity = false;
 
         // Three valued boolean:
         // null: Possibly CTAS
@@ -3194,11 +3196,9 @@ final class ParserImpl implements Parser {
 
             columnLoop:
             do {
-                ConstraintTypeStep constraint = null;
                 int position = ctx.position();
 
-                if (parseKeywordIf(ctx, "CONSTRAINT"))
-                    constraint = constraint(parseIdentifier(ctx));
+                ConstraintTypeStep constraint = parseConstraintNameSpecification(ctx);
 
                 if (parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx)) {
                     if (primary)
@@ -3256,195 +3256,27 @@ final class ParserImpl implements Parser {
                     throw ctx.expected("CHECK", "CONSTRAINT", "FOREIGN KEY", "INDEX", "KEY", "PRIMARY KEY", "UNIQUE");
 
                 Name fieldName = parseIdentifier(ctx);
-                DataType<?> type = null;
 
                 if (ctas == null)
                     ctas = peek(ctx, ',') || peek(ctx, ')');
 
-                type = !TRUE.equals(ctas)
-                    ? parseDataType(ctx)
-                    : SQLDataType.OTHER;
+                // If only we had multiple return values or destructuring...
+                ParseInlineConstraints inlineConstraints = parseInlineConstraints(
+                    ctx,
+                    fieldName,
+                    !TRUE.equals(ctas) ? parseDataType(ctx) : SQLDataType.OTHER,
+                    constraints,
+                    primary,
+                    identity
+                );
 
-                Comment fieldComment = null;
-
-                boolean nullable = false;
-                boolean defaultValue = false;
-                boolean onUpdate = false;
-                boolean unique = false;
-                boolean identity = type.identity();
-                boolean comment = false;
-
-                for (;;) {
-                    if (!nullable) {
-                        if (parseKeywordIf(ctx, "NULL")) {
-                            type = type.nullable(true);
-                            nullable = true;
-                            continue;
-                        }
-                        else if (parseKeywordIf(ctx, "NOT NULL")) {
-                            type = type.nullable(false);
-                            nullable = true;
-                            continue;
-                        }
-                    }
-
-                    if (!defaultValue) {
-                        if (parseKeywordIf(ctx, "IDENTITY")) {
-                            if (parseIf(ctx, '(')) {
-                                parseSignedInteger(ctx);
-                                parse(ctx, ',');
-                                parseSignedInteger(ctx);
-                                parse(ctx, ')');
-                            }
-
-                            type = type.identity(true);
-                            defaultValue = true;
-                            identity = true;
-                            continue;
-                        }
-                        else if (parseKeywordIf(ctx, "DEFAULT")) {
-
-                            // TODO: Ignored keyword from Oracle
-                            parseKeywordIf(ctx, "ON NULL");
-
-                            type = type.defaultValue((Field) toField(ctx, parseConcat(ctx, null)));
-                            defaultValue = true;
-                            identity = true;
-                            continue;
-                        }
-                        else if (parseKeywordIf(ctx, "GENERATED")) {
-                            if (!parseKeywordIf(ctx, "ALWAYS")) {
-                                parseKeyword(ctx, "BY DEFAULT");
-
-                                // TODO: Ignored keyword from Oracle
-                                parseKeywordIf(ctx, "ON NULL");
-                            }
-
-                            parseKeyword(ctx, "AS IDENTITY");
-
-                            // TODO: Ignored identity options from Oracle
-                            if (parseIf(ctx, '(')) {
-                                boolean identityOption = false;
-
-                                for (;;) {
-                                    if (identityOption)
-                                        parseIf(ctx, ',');
-
-                                    if (parseKeywordIf(ctx, "START WITH")) {
-                                        if (!parseKeywordIf(ctx, "LIMIT VALUE"))
-                                            parseUnsignedIntegerOrBindVariable(ctx);
-                                        identityOption = true;
-                                        continue;
-                                    }
-                                    else if (parseKeywordIf(ctx, "INCREMENT BY")
-                                          || parseKeywordIf(ctx, "MAXVALUE")
-                                          || parseKeywordIf(ctx, "MINVALUE")
-                                          || parseKeywordIf(ctx, "CACHE")) {
-                                        parseUnsignedIntegerOrBindVariable(ctx);
-                                        identityOption = true;
-                                        continue;
-                                    }
-                                    else if (parseKeywordIf(ctx, "NOMAXVALUE")
-                                          || parseKeywordIf(ctx, "NOMINVALUE")
-                                          || parseKeywordIf(ctx, "CYCLE")
-                                          || parseKeywordIf(ctx, "NOCYCLE")
-                                          || parseKeywordIf(ctx, "NOCACHE")
-                                          || parseKeywordIf(ctx, "ORDER")
-                                          || parseKeywordIf(ctx, "NOORDER")) {
-                                        identityOption = true;
-                                        continue;
-                                    }
-
-                                    if (identityOption)
-                                        break;
-                                    else
-                                        throw ctx.unsupportedClause();
-                                }
-
-                                parse(ctx, ')');
-                            }
-
-                            type = type.identity(true);
-                            defaultValue = true;
-                            identity = true;
-                            continue;
-                        }
-                    }
-
-                    if (!onUpdate) {
-                        if (parseKeywordIf(ctx, "ON UPDATE")) {
-
-                            // [#6132] TODO: Support this feature in the jOOQ DDL API
-                            parseConcat(ctx, null);
-                            onUpdate = true;
-                            continue;
-                        }
-                    }
-
-                    ConstraintTypeStep inlineConstraint = null;
-                    if (parseKeywordIf(ctx, "CONSTRAINT"))
-                        inlineConstraint = constraint(parseIdentifier(ctx));
-
-                    if (!unique) {
-                        if (parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx)) {
-                            if (!parseKeywordIf(ctx, "CLUSTERED"))
-                                parseKeywordIf(ctx, "NONCLUSTERED");
-
-                            constraints.add(inlineConstraint == null
-                                ? primaryKey(fieldName)
-                                : inlineConstraint.primaryKey(fieldName));
-                            primary = true;
-                            unique = true;
-                            continue;
-                        }
-                        else if (parseKeywordIf(ctx, "UNIQUE")) {
-                            if (!parseKeywordIf(ctx, "KEY"))
-                                parseKeywordIf(ctx, "INDEX");
-
-                            constraints.add(inlineConstraint == null
-                                ? unique(fieldName)
-                                : inlineConstraint.unique(fieldName));
-                            unique = true;
-                            continue;
-                        }
-                    }
-
-                    if (parseKeywordIf(ctx, "CHECK")) {
-                        constraints.add(parseCheckSpecification(ctx, inlineConstraint));
-                        continue;
-                    }
-
-                    if (parseKeywordIf(ctx, "REFERENCES")) {
-                        constraints.add(parseForeignKeyReferenceSpecification(ctx, inlineConstraint, new Field[] { field(fieldName) }));
-                        continue;
-                    }
-
-                    if (inlineConstraint != null)
-                        throw ctx.expected("CHECK", "PRIMARY KEY", "REFERENCES", "UNIQUE");
-
-                    if (!identity) {
-                        if (parseKeywordIf(ctx, "AUTO_INCREMENT") ||
-                            parseKeywordIf(ctx, "AUTOINCREMENT")) {
-                            type = type.identity(true);
-                            identity = true;
-                            continue;
-                        }
-                    }
-
-                    if (!comment) {
-                        if (parseKeywordIf(ctx, "COMMENT")) {
-                            fieldComment = parseComment(ctx);
-                            continue;
-                        }
-                    }
-
-                    break;
-                }
+                primary = inlineConstraints.primary;
+                identity = inlineConstraints.identity;
 
                 if (ctas)
                     fields.add(field(fieldName));
                 else
-                    fields.add(field(fieldName, type, fieldComment));
+                    fields.add(field(fieldName, inlineConstraints.type, inlineConstraints.fieldComment));
             }
             while (parseIf(ctx, ','));
 
@@ -3641,7 +3473,206 @@ final class ParserImpl implements Parser {
             return storageStep;
     }
 
-    private static boolean parsePrimaryKeyClusteredNonClusteredKeywordIf(ParserContext ctx) {
+    private static final class ParseInlineConstraints {
+        final DataType<?> type;
+        final Comment     fieldComment;
+        final boolean     primary;
+        final boolean     identity;
+
+        ParseInlineConstraints(DataType<?> type, Comment fieldComment, boolean primary, boolean identity) {
+            this.type = type;
+            this.fieldComment = fieldComment;
+            this.primary = primary;
+            this.identity = identity;
+        }
+    }
+
+    private static final ParseInlineConstraints parseInlineConstraints(
+        ParserContext ctx,
+        Name fieldName,
+        DataType<?> type,
+        List<? super Constraint> constraints,
+        boolean primary,
+        boolean identity
+    ) {
+        boolean nullable = false;
+        boolean defaultValue = false;
+        boolean onUpdate = false;
+        boolean unique = false;
+        boolean comment = false;
+        Comment fieldComment = null;
+
+        identity |= type.identity();
+
+        for (;;) {
+            if (!nullable) {
+                if (parseKeywordIf(ctx, "NULL")) {
+                    type = type.nullable(true);
+                    nullable = true;
+                    continue;
+                }
+                else if (parseKeywordIf(ctx, "NOT NULL")) {
+                    type = type.nullable(false);
+                    nullable = true;
+                    continue;
+                }
+            }
+
+            if (!defaultValue) {
+                if (!identity && parseKeywordIf(ctx, "IDENTITY")) {
+                    if (parseIf(ctx, '(')) {
+                        parseSignedInteger(ctx);
+                        parse(ctx, ',');
+                        parseSignedInteger(ctx);
+                        parse(ctx, ')');
+                    }
+
+                    type = type.identity(true);
+                    defaultValue = true;
+                    identity = true;
+                    continue;
+                }
+                else if (parseKeywordIf(ctx, "DEFAULT")) {
+
+                    // TODO: Ignored keyword from Oracle
+                    parseKeywordIf(ctx, "ON NULL");
+
+                    type = type.defaultValue((Field) toField(ctx, parseConcat(ctx, null)));
+                    defaultValue = true;
+                    identity = true;
+                    continue;
+                }
+                else if (!identity && parseKeywordIf(ctx, "GENERATED")) {
+                    if (!parseKeywordIf(ctx, "ALWAYS")) {
+                        parseKeyword(ctx, "BY DEFAULT");
+
+                        // TODO: Ignored keyword from Oracle
+                        parseKeywordIf(ctx, "ON NULL");
+                    }
+
+                    parseKeyword(ctx, "AS IDENTITY");
+
+                    // TODO: Ignored identity options from Oracle
+                    if (parseIf(ctx, '(')) {
+                        boolean identityOption = false;
+
+                        for (;;) {
+                            if (identityOption)
+                                parseIf(ctx, ',');
+
+                            if (parseKeywordIf(ctx, "START WITH")) {
+                                if (!parseKeywordIf(ctx, "LIMIT VALUE"))
+                                    parseUnsignedIntegerOrBindVariable(ctx);
+                                identityOption = true;
+                                continue;
+                            }
+                            else if (parseKeywordIf(ctx, "INCREMENT BY")
+                                  || parseKeywordIf(ctx, "MAXVALUE")
+                                  || parseKeywordIf(ctx, "MINVALUE")
+                                  || parseKeywordIf(ctx, "CACHE")) {
+                                parseUnsignedIntegerOrBindVariable(ctx);
+                                identityOption = true;
+                                continue;
+                            }
+                            else if (parseKeywordIf(ctx, "NOMAXVALUE")
+                                  || parseKeywordIf(ctx, "NOMINVALUE")
+                                  || parseKeywordIf(ctx, "CYCLE")
+                                  || parseKeywordIf(ctx, "NOCYCLE")
+                                  || parseKeywordIf(ctx, "NOCACHE")
+                                  || parseKeywordIf(ctx, "ORDER")
+                                  || parseKeywordIf(ctx, "NOORDER")) {
+                                identityOption = true;
+                                continue;
+                            }
+
+                            if (identityOption)
+                                break;
+                            else
+                                throw ctx.unsupportedClause();
+                        }
+
+                        parse(ctx, ')');
+                    }
+
+                    type = type.identity(true);
+                    defaultValue = true;
+                    identity = true;
+                    continue;
+                }
+            }
+
+            if (!onUpdate) {
+                if (parseKeywordIf(ctx, "ON UPDATE")) {
+
+                    // [#6132] TODO: Support this feature in the jOOQ DDL API
+                    parseConcat(ctx, null);
+                    onUpdate = true;
+                    continue;
+                }
+            }
+
+            ConstraintTypeStep inlineConstraint = parseConstraintNameSpecification(ctx);
+
+            if (!unique) {
+                if (!primary && parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx)) {
+                    if (!parseKeywordIf(ctx, "CLUSTERED"))
+                        parseKeywordIf(ctx, "NONCLUSTERED");
+
+                    constraints.add(parseConstraintEnforcementIf(ctx, inlineConstraint == null
+                        ? primaryKey(fieldName)
+                        : inlineConstraint.primaryKey(fieldName)));
+                    primary = true;
+                    unique = true;
+                    continue;
+                }
+                else if (parseKeywordIf(ctx, "UNIQUE")) {
+                    if (!parseKeywordIf(ctx, "KEY"))
+                        parseKeywordIf(ctx, "INDEX");
+
+                    constraints.add(parseConstraintEnforcementIf(ctx, inlineConstraint == null
+                        ? unique(fieldName)
+                        : inlineConstraint.unique(fieldName)));
+                    unique = true;
+                    continue;
+                }
+            }
+
+            if (parseKeywordIf(ctx, "CHECK")) {
+                constraints.add(parseCheckSpecification(ctx, inlineConstraint));
+                continue;
+            }
+
+            if (parseKeywordIf(ctx, "REFERENCES")) {
+                constraints.add(parseForeignKeyReferenceSpecification(ctx, inlineConstraint, new Field[] { field(fieldName) }));
+                continue;
+            }
+
+            if (inlineConstraint != null)
+                throw ctx.expected("CHECK", "PRIMARY KEY", "REFERENCES", "UNIQUE");
+
+            if (!identity) {
+                if (parseKeywordIf(ctx, "AUTO_INCREMENT") ||
+                    parseKeywordIf(ctx, "AUTOINCREMENT")) {
+                    type = type.identity(true);
+                    identity = true;
+                    continue;
+                }
+            }
+
+            if (!comment) {
+                if (parseKeywordIf(ctx, "COMMENT")) {
+                    fieldComment = parseComment(ctx);
+                    continue;
+                }
+            }
+
+            break;
+        }
+
+        return new ParseInlineConstraints(type, fieldComment, primary, identity);
+    }
+
+    private static final boolean parsePrimaryKeyClusteredNonClusteredKeywordIf(ParserContext ctx) {
         if (!parseKeywordIf(ctx, "PRIMARY KEY"))
             return false;
 
@@ -3677,35 +3708,43 @@ final class ParserImpl implements Parser {
         return Internal.createIndex(name == null ? NO_NAME : name, table, fields, false);
     }
 
-    private static final boolean parseConstraintStateIf(ParserContext ctx) {
-        parseKeywordIf(ctx, "ENABLE");
-        return true;
+    private static final Constraint parseConstraintEnforcementIf(ParserContext ctx, ConstraintEnforcementStep e) {
+        if ((parseKeywordIf(ctx, "ENABLE") || parseKeywordIf(ctx, "ENFORCED")) && ctx.requireProEdition())
+
+
+
+            ;
+        else if ((parseKeywordIf(ctx, "DISABLE") || parseKeywordIf(ctx, "NOT ENFORCED")) && ctx.requireProEdition())
+
+
+
+            ;
+
+        return e;
     }
 
     private static final Constraint parsePrimaryKeySpecification(ParserContext ctx, ConstraintTypeStep constraint) {
         parseUsingBtreeOrHashIf(ctx);
         Field<?>[] fieldNames = parseKeyColumnList(ctx);
 
-        Constraint e = constraint == null
+        ConstraintEnforcementStep e = constraint == null
             ? primaryKey(fieldNames)
             : constraint.primaryKey(fieldNames);
 
         parseUsingBtreeOrHashIf(ctx);
-        parseConstraintStateIf(ctx);
-        return e;
+        return parseConstraintEnforcementIf(ctx, e);
     }
 
     private static final Constraint parseUniqueSpecification(ParserContext ctx, ConstraintTypeStep constraint) {
         parseUsingBtreeOrHashIf(ctx);
         Field<?>[] fieldNames = parseKeyColumnList(ctx);
 
-        Constraint e = constraint == null
+        ConstraintEnforcementStep e = constraint == null
             ? unique(fieldNames)
             : constraint.unique(fieldNames);
 
         parseUsingBtreeOrHashIf(ctx);
-        parseConstraintStateIf(ctx);
-        return e;
+        return parseConstraintEnforcementIf(ctx, e);
     }
 
     private static Field<?>[] parseKeyColumnList(ParserContext ctx) {
@@ -3731,12 +3770,11 @@ final class ParserImpl implements Parser {
         Condition condition = parseCondition(ctx);
         parse(ctx, ')');
 
-        Constraint e = constraint == null
+        ConstraintEnforcementStep e = constraint == null
             ? check(condition)
             : constraint.check(condition);
 
-        parseConstraintStateIf(ctx);
-        return e;
+        return parseConstraintEnforcementIf(ctx, e);
     }
 
     private static final Constraint parseForeignKeySpecification(ParserContext ctx, ConstraintTypeStep constraint) {
@@ -3808,8 +3846,7 @@ final class ParserImpl implements Parser {
                 throw ctx.expected("DELETE", "UPDATE");
         }
 
-        parseConstraintStateIf(ctx);
-        return e;
+        return parseConstraintEnforcementIf(ctx, e);
     }
 
     private static final Set<String> ALTER_KEYWORDS = new HashSet<>(Arrays.asList("ADD", "ALTER", "COMMENT", "DROP", "MODIFY", "RENAME"));
@@ -3846,8 +3883,11 @@ final class ParserImpl implements Parser {
             case 'A':
                 if (parseKeywordIf(ctx, "ADD"))
                     return parseAlterTableAdd(ctx, s1, tableName);
-                else if (parseKeywordIf(ctx, "ALTER") && (parseKeywordIf(ctx, "COLUMN") || true))
-                    return parseAlterTableAlterColumn(ctx, s1);
+                else if (parseKeywordIf(ctx, "ALTER"))
+                    if (parseKeywordIf(ctx, "CONSTRAINT"))
+                        return parseAlterTableAlterConstraint(ctx, s1);
+                    else if ((parseKeywordIf(ctx, "COLUMN") || true))
+                        return parseAlterTableAlterColumn(ctx, s1);
 
                 break;
 
@@ -3871,7 +3911,10 @@ final class ParserImpl implements Parser {
                             : s1.dropConstraint(parseIdentifier(ctx)));
                     }
                     else if (parseKeywordIf(ctx, "UNIQUE")) {
-                        return parseCascadeRestrictIf(ctx, s1.dropUnique(parseIdentifier(ctx)));
+                        return parseCascadeRestrictIf(ctx, s1.dropUnique(
+                              peek(ctx, '(')
+                            ? unique(parseKeyColumnList(ctx))
+                            : constraint(parseIdentifier(ctx))));
                     }
                     else if (parseKeywordIf(ctx, "PRIMARY KEY")) {
                         Name identifier = parseIdentifierIf(ctx);
@@ -3918,8 +3961,11 @@ final class ParserImpl implements Parser {
 
             case 'm':
             case 'M':
-                if (parseKeywordIf(ctx, "MODIFY") && (parseKeywordIf(ctx, "COLUMN") || true))
-                    return parseAlterTableAlterColumn(ctx, s1);
+                if (parseKeywordIf(ctx, "MODIFY"))
+                    if (parseKeywordIf(ctx, "CONSTRAINT"))
+                        return parseAlterTableAlterConstraint(ctx, s1);
+                    else if ((parseKeywordIf(ctx, "COLUMN") || true))
+                        return parseAlterTableAlterColumn(ctx, s1);
 
                 break;
 
@@ -3990,7 +4036,7 @@ final class ParserImpl implements Parser {
 
         if (parseIf(ctx, '(')) {
             do {
-                list.add(parseAlterTableAddFieldOrConstraint(ctx));
+                parseAlterTableAddFieldsOrConstraints(ctx, list);
             }
             while (parseIf(ctx, ','));
 
@@ -3998,10 +4044,13 @@ final class ParserImpl implements Parser {
         }
         else if (parseKeywordIf(ctx, "COLUMN IF NOT EXISTS")
               || parseKeywordIf(ctx, "IF NOT EXISTS")) {
-            return parseAlterTableAddFieldFirstBeforeLast(ctx, s1.addColumnIfNotExists(parseAlterTableAddField(ctx)));
+            return parseAlterTableAddFieldFirstBeforeLast(ctx, s1.addColumnIfNotExists(parseAlterTableAddField(ctx, null)));
         }
         else {
-            list.add(parseAlterTableAddFieldOrConstraint(ctx));
+            do {
+                parseAlterTableAddFieldsOrConstraints(ctx, list);
+            }
+            while (parseIf(ctx, ',') && parseKeyword(ctx, "ADD"));
         }
 
         if (list.size() == 1)
@@ -4035,32 +4084,31 @@ final class ParserImpl implements Parser {
             || parseKeywordIf(ctx, "KEY");
     }
 
-    private static final FieldOrConstraint parseAlterTableAddFieldOrConstraint(ParserContext ctx) {
-        ConstraintTypeStep constraint = null;
-
-        if (parseKeywordIf(ctx, "CONSTRAINT"))
-            constraint = constraint(parseIdentifier(ctx));
+    private static final void parseAlterTableAddFieldsOrConstraints(ParserContext ctx, List<FieldOrConstraint> list) {
+        ConstraintTypeStep constraint = parseConstraintNameSpecification(ctx);
 
         if (parsePrimaryKeyClusteredNonClusteredKeywordIf(ctx))
-            return parsePrimaryKeySpecification(ctx, constraint);
-        else if (parseKeywordIf(ctx, "UNIQUE")) {
-            if (!parseKeywordIf(ctx, "KEY"))
-                parseKeywordIf(ctx, "INDEX");
-
-            return parseUniqueSpecification(ctx, constraint);
-        }
+            list.add(parsePrimaryKeySpecification(ctx, constraint));
+        else if (parseKeywordIf(ctx, "UNIQUE") && (parseKeywordIf(ctx, "KEY") || parseKeywordIf(ctx, "INDEX") || true))
+            list.add(parseUniqueSpecification(ctx, constraint));
         else if (parseKeywordIf(ctx, "FOREIGN KEY"))
-            return parseForeignKeySpecification(ctx, constraint);
+            list.add(parseForeignKeySpecification(ctx, constraint));
         else if (parseKeywordIf(ctx, "CHECK"))
-            return parseCheckSpecification(ctx, constraint);
+            list.add(parseCheckSpecification(ctx, constraint));
         else if (constraint != null)
             throw ctx.expected("CHECK", "FOREIGN KEY", "PRIMARY KEY", "UNIQUE");
-
-        parseKeywordIf(ctx, "COLUMN");
-        return parseAlterTableAddField(ctx);
+        else if (parseKeywordIf(ctx, "COLUMN") || true)
+            parseAlterTableAddField(ctx, list);
     }
 
-    private static final Field<?> parseAlterTableAddField(ParserContext ctx) {
+    private static final ConstraintTypeStep parseConstraintNameSpecification(ParserContext ctx) {
+        if (parseKeywordIf(ctx, "CONSTRAINT") && !peekKeyword(ctx, "PRIMARY KEY", "UNIQUE", "FOREIGN KEY", "CHECK"))
+            return constraint(parseIdentifier(ctx));
+
+        return null;
+    }
+
+    private static final Field<?> parseAlterTableAddField(ParserContext ctx, List<FieldOrConstraint> list) {
 
         // The below code is taken from CREATE TABLE, with minor modifications as
         // https://github.com/jOOQ/jOOQ/issues/5317 has not yet been implemented
@@ -4069,66 +4117,15 @@ final class ParserImpl implements Parser {
 
         Name fieldName = parseIdentifier(ctx);
         DataType type = parseDataType(ctx);
-        Comment fieldComment = null;
+        int position = list == null ? -1 : list.size();
 
-        boolean nullable = false;
-        boolean defaultValue = false;
-        boolean onUpdate = false;
-        boolean unique = false;
-        boolean comment = false;
+        ParseInlineConstraints inline = parseInlineConstraints(ctx, fieldName, type, list, false, false);
+        Field<?> result = field(fieldName, inline.type, inline.fieldComment);
 
-        for (;;) {
-            if (!nullable) {
-                if (parseKeywordIf(ctx, "NULL")) {
-                    type = type.nullable(true);
-                    nullable = true;
-                    continue;
-                }
-                else if (parseKeywordIf(ctx, "NOT NULL")) {
-                    type = type.nullable(false);
-                    nullable = true;
-                    continue;
-                }
-            }
+        if (list != null)
+            list.add(position, result);
 
-            if (!defaultValue) {
-                if (parseKeywordIf(ctx, "DEFAULT")) {
-                    type = type.defaultValue(toField(ctx, parseConcat(ctx, null)));
-                    defaultValue = true;
-                    continue;
-                }
-            }
-
-            if (!onUpdate) {
-                if (parseKeywordIf(ctx, "ON UPDATE")) {
-
-                    // [#6132] TODO: Support this feature in the jOOQ DDL API
-                    parseConcat(ctx, null);
-                    onUpdate = true;
-                    continue;
-                }
-            }
-
-            if (!unique)
-                if (parseKeywordIf(ctx, "PRIMARY KEY"))
-                    throw ctx.notImplemented("Inline primary key specification");
-                else if (parseKeywordIf(ctx, "UNIQUE"))
-                    throw ctx.notImplemented("Inline unique key specification");
-
-            if (parseKeywordIf(ctx, "CHECK"))
-                throw ctx.notImplemented("Inline check constraint specification");
-
-            if (!comment) {
-                if (parseKeywordIf(ctx, "COMMENT")) {
-                    fieldComment = parseComment(ctx);
-                    continue;
-                }
-            }
-
-            break;
-        }
-
-        return field(fieldName, type, fieldComment);
+        return result;
     }
 
     private static final DDLQuery parseAlterTableAlterColumn(ParserContext ctx, AlterTableStep s1) {
@@ -4160,6 +4157,21 @@ final class ParserImpl implements Parser {
             parse(ctx, ')');
 
         return s1.alter(field).set(type);
+    }
+
+    private static final DDLQuery parseAlterTableAlterConstraint(ParserContext ctx, AlterTableStep s1) {
+        ctx.requireProEdition();
+
+
+
+
+
+
+
+
+
+
+        throw ctx.expected("ENABLE", "ENFORCED", "DISABLE", "NOT ENFORCED");
     }
 
     private static final DDLQuery parseAlterType(ParserContext ctx) {
@@ -9190,9 +9202,10 @@ final class ParserImpl implements Parser {
 
     private static final Name parseIdentifierIf(ParserContext ctx, boolean allowAposQuotes) {
         char quoteEnd = parseQuote(ctx, allowAposQuotes);
+        boolean quoted = quoteEnd != 0;
 
         int start = ctx.position();
-        if (quoteEnd != 0)
+        if (quoted)
             while (ctx.character() != quoteEnd && ctx.hasMore())
                 ctx.positionInc();
         else
@@ -9202,96 +9215,20 @@ final class ParserImpl implements Parser {
         if (ctx.position() == start)
             return null;
 
-        String result = ctx.substring(start, ctx.position());
+        String name = normaliseNameCase(ctx.configuration(), ctx.substring(start, ctx.position()), quoted, ctx.locale);
 
-        switch (parseNameCase(ctx)) {
-            case LOWER_IF_UNQUOTED:
-                if (quoteEnd != 0)
-                    break;
-
-                // no-break
-
-            case LOWER:
-                result = result.toLowerCase(renderLocale(ctx.settings()));
-                break;
-
-            case UPPER_IF_UNQUOTED:
-                if (quoteEnd != 0)
-                    break;
-
-                // no-break
-            case UPPER:
-                result = result.toUpperCase(renderLocale(ctx.settings()));
-                break;
-
-            case AS_IS:
-            case DEFAULT:
-            default:
-                // Keep result
-                break;
-        }
-
-        if (quoteEnd != 0) {
+        if (quoted) {
             if (ctx.character() != quoteEnd)
                 throw ctx.exception("Quoted identifier must terminate in " + quoteEnd);
 
             ctx.positionInc();
             parseWhitespaceIf(ctx);
-            return DSL.quotedName(result);
+            return DSL.quotedName(name);
         }
         else {
             parseWhitespaceIf(ctx);
-            return DSL.unquotedName(result);
+            return DSL.unquotedName(name);
         }
-    }
-
-    private static final ParseNameCase parseNameCase(ParserContext ctx) {
-        ParseNameCase result = defaultIfNull(ctx.settings().getParseNameCase(), ParseNameCase.DEFAULT);
-
-        if (result == ParseNameCase.DEFAULT) {
-            switch (defaultIfNull(ctx.settings().getParseDialect(), ctx.family()).family()) {
-
-
-
-
-
-
-
-                case POSTGRES:
-                    return ParseNameCase.LOWER_IF_UNQUOTED;
-
-
-
-
-
-
-
-
-                case DERBY:
-                case FIREBIRD:
-                case H2:
-                case HSQLDB:
-                    return ParseNameCase.UPPER_IF_UNQUOTED;
-
-
-
-
-
-
-
-
-
-                case MYSQL:
-                case SQLITE:
-                    return ParseNameCase.AS_IS;
-
-                case DEFAULT:
-                default:
-                    // Keep default if we don't know the case
-            }
-        }
-
-        return result;
     }
 
     private static final char parseQuote(ParserContext ctx, boolean allowAposQuotes) {
@@ -10658,10 +10595,7 @@ final class ParserImpl implements Parser {
         // [#8074] The SQL standard and some implementations (e.g. PostgreSQL,
         //         SQL Server) support nesting block comments
         int blockCommentNestLevel = 0;
-        boolean ignoreComment = false;
-        String ignoreCommentStart = ctx.settings().getParseIgnoreCommentStart();
-        String ignoreCommentStop = ctx.settings().getParseIgnoreCommentStop();
-        boolean checkIgnoreComment = !FALSE.equals(ctx.settings().isParseIgnoreComments());
+        PeekIgnoreComment ignoreComment = new PeekIgnoreComment(ctx);
 
         loop:
         for (int i = position; i < ctx.sql.length; i++) {
@@ -10679,13 +10613,7 @@ final class ParserImpl implements Parser {
                         blockCommentNestLevel++;
 
                         while (i < ctx.sql.length) {
-                            if (checkIgnoreComment)
-                                if (!ignoreComment)
-                                    ignoreComment = peek(ctx, ignoreCommentStart, i);
-                                else
-                                    ignoreComment = !peek(ctx, ignoreCommentStop, i);
-
-                            if (!ignoreComment) {
+                            if (!peekIgnoreComment(ctx, ignoreComment, i).ignoreComment) {
                                 switch (ctx.sql[i]) {
                                     case '/':
                                         if (i + 1 < ctx.sql.length && ctx.sql[i + 1] == '*') {
@@ -10719,6 +10647,26 @@ final class ParserImpl implements Parser {
                         }
                     }
 
+                    // [#9651] H2 and Snowflake's c-style single line comments
+                    else if (i + 1 < ctx.sql.length && ctx.sql[i + 1] == '/') {
+                        i = i + 2;
+
+                        while (i < ctx.sql.length) {
+                            if (!peekIgnoreComment(ctx, ignoreComment, i).ignoreComment) {
+                                switch (ctx.sql[i]) {
+                                    case '\r':
+                                    case '\n':
+                                        position = i + 1;
+                                        continue loop;
+                                }
+                            }
+
+                            i++;
+                        }
+
+                        position = i;
+                    }
+
                     break loop;
 
                 case '-':
@@ -10726,13 +10674,7 @@ final class ParserImpl implements Parser {
                         i = i + 2;
 
                         while (i < ctx.sql.length) {
-                            if (checkIgnoreComment)
-                                if (!ignoreComment)
-                                    ignoreComment = peek(ctx, ignoreCommentStart, i);
-                                else
-                                    ignoreComment = !peek(ctx, ignoreCommentStop, i);
-
-                            if (!ignoreComment) {
+                            if (!peekIgnoreComment(ctx, ignoreComment, i).ignoreComment) {
                                 switch (ctx.sql[i]) {
                                     case '\r':
                                     case '\n':
@@ -10762,6 +10704,35 @@ final class ParserImpl implements Parser {
             throw ctx.exception("Nested block comment not properly closed");
 
         return position;
+    }
+
+    private static final class PeekIgnoreComment {
+        boolean ignoreComment;
+        final String ignoreCommentStart;
+        final String ignoreCommentStop;
+        final boolean checkIgnoreComment;
+
+        PeekIgnoreComment(ParserContext ctx) {
+            this.ignoreComment = false;
+            this.ignoreCommentStart = ctx.settings().getParseIgnoreCommentStart();
+            this.ignoreCommentStop = ctx.settings().getParseIgnoreCommentStop();
+            this.checkIgnoreComment = !FALSE.equals(ctx.settings().isParseIgnoreComments());
+        }
+    }
+
+    private static final PeekIgnoreComment peekIgnoreComment(
+        ParserContext ctx,
+        PeekIgnoreComment param,
+        int i
+    ) {
+
+        if (param.checkIgnoreComment)
+            if (!param.ignoreComment)
+                param.ignoreComment = peek(ctx, param.ignoreCommentStart, i);
+            else
+                param.ignoreComment = !peek(ctx, param.ignoreCommentStop, i);
+
+        return param;
     }
 
     private static final char upper(char c) {
@@ -10907,6 +10878,7 @@ final class ParserContext {
     private static final boolean          PRO_EDITION     = false;
 
     final DSLContext                      dsl;
+    final Locale                          locale;
     final Meta                            meta;
     final char[]                          sql;
     private final ParseWithMetaLookups    metaLookups;
@@ -10929,6 +10901,7 @@ final class ParserContext {
         Object[] bindings
     ) {
         this.dsl = dsl;
+        this.locale = parseLocale(dsl.settings());
         this.meta = meta;
         this.metaLookups = metaLookups;
         this.sql = sqlString.toCharArray();

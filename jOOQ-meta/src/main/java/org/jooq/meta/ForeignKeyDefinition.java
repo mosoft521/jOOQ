@@ -44,11 +44,14 @@ import java.util.List;
  *
  * @author Lukas Eder
  */
-public interface ForeignKeyDefinition extends Definition {
+public interface ForeignKeyDefinition extends ConstraintDefinition {
 
     /**
      * The definition of the referencing table
+     *
+     * @deprecated - [#9672] - jOOQ 3.13 - Use {@link ConstraintDefinition#getTable()} instead.
      */
+    @Deprecated
     TableDefinition getKeyTable();
 
     /**

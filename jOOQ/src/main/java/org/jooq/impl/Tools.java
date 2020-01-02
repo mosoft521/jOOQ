@@ -151,6 +151,7 @@ import static org.jooq.impl.Tools.DataCacheKey.DATA_REFLECTION_CACHE_GET_MATCHIN
 import static org.jooq.impl.Tools.DataCacheKey.DATA_REFLECTION_CACHE_GET_MATCHING_SETTERS;
 import static org.jooq.impl.Tools.DataCacheKey.DATA_REFLECTION_CACHE_HAS_COLUMN_ANNOTATIONS;
 import static org.jooq.impl.Tools.DataKey.DATA_BLOCK_NESTING;
+import static org.jooq.tools.StringUtils.defaultIfNull;
 import static org.jooq.tools.reflect.Reflect.accessible;
 
 import java.io.Serializable;
@@ -188,6 +189,8 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ListIterator;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
@@ -214,6 +217,7 @@ import org.jooq.CommonTableExpression;
 import org.jooq.Condition;
 import org.jooq.Configuration;
 import org.jooq.Context;
+import org.jooq.Converter;
 import org.jooq.Cursor;
 import org.jooq.DSLContext;
 import org.jooq.DataType;
@@ -250,6 +254,7 @@ import org.jooq.UDT;
 import org.jooq.UDTRecord;
 import org.jooq.UpdatableRecord;
 import org.jooq.conf.BackslashEscaping;
+import org.jooq.conf.ParseNameCase;
 import org.jooq.conf.Settings;
 import org.jooq.conf.SettingsTools;
 import org.jooq.conf.ThrowExceptions;
@@ -701,6 +706,7 @@ final class Tools {
     };
 
     private static final char[]              TOKEN_SINGLE_LINE_COMMENT      = { '-', '-' };
+    private static final char[]              TOKEN_SINGLE_LINE_COMMENT_C    = { '/', '/' };
     private static final char[]              TOKEN_HASH                     = { '#' };
     private static final char[]              TOKEN_MULTI_LINE_COMMENT_OPEN  = { '/', '*' };
     private static final char[]              TOKEN_MULTI_LINE_COMMENT_CLOSE = { '*', '/' };
@@ -1921,12 +1927,7 @@ final class Tools {
     @SafeVarargs
 
     static final <T> Iterable<T> reverseIterable(final T... array) {
-        return new Iterable<T>() {
-            @Override
-            public Iterator<T> iterator() {
-                return reverseIterator(array);
-            }
-        };
+        return reverseIterable(Arrays.asList(array));
     }
 
     /**
@@ -1936,22 +1937,41 @@ final class Tools {
     @SafeVarargs
 
     static final <T> Iterator<T> reverseIterator(final T... array) {
+        return reverseIterator(Arrays.asList(array));
+    }
+
+    /**
+     * Reverse iterate over a list.
+     */
+    static final <T> Iterable<T> reverseIterable(final List<T> list) {
+        return new Iterable<T>() {
+            @Override
+            public Iterator<T> iterator() {
+                return reverseIterator(list);
+            }
+        };
+    }
+
+    /**
+     * Reverse iterate over a list.
+     */
+    static final <T> Iterator<T> reverseIterator(final List<T> list) {
         return new Iterator<T>() {
-            int index = array.length;
+            ListIterator<T> li = list.listIterator(list.size());
 
             @Override
             public boolean hasNext() {
-                return index > 0;
+                return li.hasPrevious();
             }
 
             @Override
             public T next() {
-                return array[--index];
+                return li.previous();
             }
 
             @Override
             public void remove() {
-                throw new UnsupportedOperationException("remove");
+                li.remove();
             }
         };
     }
@@ -2215,11 +2235,12 @@ final class Tools {
         characterLoop:
         for (int i = 0; i < sqlChars.length; i++) {
 
-            // [#1797] Skip content inside of single-line comments, e.g.
+            // [#1797] [#9651] Skip content inside of single-line comments, e.g.
             // select 1 x -- what's this ?'?
             // from t_book -- what's that ?'?
             // where id = ?
             if (peek(sqlChars, i, TOKEN_SINGLE_LINE_COMMENT) ||
+                peek(sqlChars, i, TOKEN_SINGLE_LINE_COMMENT_C) ||
 
             // [#4182] MySQL also supports # as a comment character, and requires
             // -- to be followed by a whitespace, although the latter is also not
@@ -2269,8 +2290,13 @@ final class Tools {
                 // Consume the whole string literal
                 for (;;) {
 
+                    // [#9648] The "string literal" might not be one, if we're inside
+                    //         of some vendor specific comment syntax
+                    if (i >= sqlChars.length)
+                        break characterLoop;
+
                     // [#3000] [#3630] Consume backslash-escaped characters if needed
-                    if (sqlChars[i] == '\\' && needsBackslashEscaping)
+                    else if (sqlChars[i] == '\\' && needsBackslashEscaping)
                         render.sql(sqlChars[i++]);
 
                     // Consume an escaped apostrophe
@@ -2384,8 +2410,14 @@ final class Tools {
                 identifierLoop:
                 for (;;) {
 
+
+                    // [#9648] The "identifier" might not be one, if we're inside
+                    //         of some vendor specific comment syntax
+                    if (i >= sqlChars.length)
+                        break characterLoop;
+
                     // Consume an escaped quote
-                    if (peek(sqlChars, i, quotes[QUOTE_END_DELIMITER_ESCAPED][delimiter])) {
+                    else if (peek(sqlChars, i, quotes[QUOTE_END_DELIMITER_ESCAPED][delimiter])) {
                         for (int d = 0; d < quotes[QUOTE_END_DELIMITER_ESCAPED][delimiter].length; d++)
                             render.sql(sqlChars[i++]);
 
@@ -5300,5 +5332,89 @@ final class Tools {
                 return true;
 
         return false;
+    }
+
+    /**
+     * Normalise a name case depending on the dialect and the setting for
+     * {@link ParseNameCase}.
+     */
+    static final String normaliseNameCase(Configuration configuration, String name, boolean quoted, Locale locale) {
+        switch (parseNameCase(configuration)) {
+            case LOWER_IF_UNQUOTED:
+                if (quoted)
+                    return name;
+
+                // no-break
+
+            case LOWER:
+                return name.toLowerCase(locale);
+
+            case UPPER_IF_UNQUOTED:
+                if (quoted)
+                    return name;
+
+                // no-break
+            case UPPER:
+                return name.toUpperCase(locale);
+
+            case AS_IS:
+            case DEFAULT:
+            default:
+                return name;
+        }
+    }
+
+    /**
+     * Get the {@link ParseNameCase}, looking up the default value from the
+     * parse dialect.
+     */
+    private static final ParseNameCase parseNameCase(Configuration configuration) {
+        ParseNameCase result = defaultIfNull(configuration.settings().getParseNameCase(), ParseNameCase.DEFAULT);
+
+        if (result == ParseNameCase.DEFAULT) {
+            switch (defaultIfNull(configuration.settings().getParseDialect(), configuration.family()).family()) {
+
+
+
+
+
+
+
+                case POSTGRES:
+                    return ParseNameCase.LOWER_IF_UNQUOTED;
+
+
+
+
+
+
+
+
+                case DERBY:
+                case FIREBIRD:
+                case H2:
+                case HSQLDB:
+                    return ParseNameCase.UPPER_IF_UNQUOTED;
+
+
+
+
+
+
+
+
+
+                case MYSQL:
+                case SQLITE:
+                    return ParseNameCase.AS_IS;
+
+                case DEFAULT:
+                default:
+                    // The SQL standard uses upper case identifiers if unquoted
+                    return ParseNameCase.UPPER_IF_UNQUOTED;
+            }
+        }
+
+        return result;
     }
 }

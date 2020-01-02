@@ -4,7 +4,6 @@
 package org.jooq.example.flyway.ddl.db.h2;
 
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -27,17 +26,17 @@ import org.jooq.impl.CatalogImpl;
 @SuppressWarnings({ "all", "unchecked", "rawtypes" })
 public class DefaultCatalog extends CatalogImpl {
 
-    private static final long serialVersionUID = 1549802009;
+    private static final long serialVersionUID = 1585122192;
 
     /**
-     * The reference instance of <code></code>
+     * The reference instance of <code>DEFAULT_CATALOG</code>
      */
     public static final DefaultCatalog DEFAULT_CATALOG = new DefaultCatalog();
 
     /**
      * The schema <code>FLYWAY_TEST</code>.
      */
-    public final FlywayTest FLYWAY_TEST = org.jooq.example.flyway.ddl.db.h2.FlywayTest.FLYWAY_TEST;
+    public final FlywayTest FLYWAY_TEST = FlywayTest.FLYWAY_TEST;
 
     /**
      * No further instances allowed
@@ -48,12 +47,6 @@ public class DefaultCatalog extends CatalogImpl {
 
     @Override
     public final List<Schema> getSchemas() {
-        List result = new ArrayList();
-        result.addAll(getSchemas0());
-        return result;
-    }
-
-    private final List<Schema> getSchemas0() {
         return Arrays.<Schema>asList(
             FlywayTest.FLYWAY_TEST);
     }

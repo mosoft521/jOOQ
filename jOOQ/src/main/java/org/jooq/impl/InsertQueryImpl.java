@@ -273,7 +273,12 @@ final class InsertQueryImpl<R extends Record> extends AbstractStoreQuery<R> impl
 
     @Override
     public final void setSelect(Field<?>[] f, Select<?> s) {
-        insertMaps.addFields(Arrays.asList(f));
+        setSelect(Arrays.asList(f), s);
+    }
+
+    @Override
+    public final void setSelect(Collection<? extends Field<?>> f, Select<?> s) {
+        insertMaps.addFields(f);
         select = s;
     }
 
@@ -359,6 +364,18 @@ final class InsertQueryImpl<R extends Record> extends AbstractStoreQuery<R> impl
                             ctx.qualify(false)
                                .visit(onConflict)
                                .qualify(qualify);
+
+
+
+
+
+
+
+
+
+
+
+
 
                         // [#6462] There is no way to emulate MySQL's ON DUPLICATE KEY UPDATE
                         //         where all UNIQUE keys are considered for conflicts. PostgreSQL
@@ -472,14 +489,29 @@ final class InsertQueryImpl<R extends Record> extends AbstractStoreQuery<R> impl
 
                         ctx.data().remove(DATA_CONSTRAINT_REFERENCE);
                     }
-                    else if (onConflict != null && onConflict.size() > 0) {
+                    else {
                         boolean qualify = ctx.qualify();
 
-                        ctx.sql('(')
-                           .qualify(false)
-                           .visit(onConflict)
-                           .qualify(qualify)
-                           .sql(')');
+                        if (onConflict != null && onConflict.size() > 0)
+                            ctx.sql('(')
+                               .qualify(false)
+                               .visit(onConflict)
+                               .qualify(qualify)
+                               .sql(')');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                     }
 
                     ctx.sql(' ')

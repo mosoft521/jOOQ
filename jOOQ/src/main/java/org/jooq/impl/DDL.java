@@ -46,6 +46,8 @@ import static org.jooq.DDLFlag.SCHEMA;
 import static org.jooq.DDLFlag.SEQUENCE;
 import static org.jooq.DDLFlag.TABLE;
 import static org.jooq.DDLFlag.UNIQUE;
+import static org.jooq.impl.Comparators.KEY_COMP;
+import static org.jooq.impl.Comparators.NAMED_COMP;
 import static org.jooq.impl.DSL.constraint;
 
 import java.util.ArrayList;
@@ -56,6 +58,7 @@ import java.util.List;
 
 import org.jooq.Check;
 import org.jooq.Constraint;
+import org.jooq.ConstraintEnforcementStep;
 import org.jooq.CreateSequenceFlagsStep;
 import org.jooq.CreateTableOnCommitStep;
 import org.jooq.DDLExportConfiguration;
@@ -64,6 +67,7 @@ import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
 import org.jooq.Index;
+import org.jooq.Key;
 import org.jooq.Meta;
 import org.jooq.Named;
 import org.jooq.Queries;
@@ -144,13 +148,13 @@ final class DDL {
         else if (configuration.defaultSequenceFlags())
             result = result.incrementBy(1);
 
-        if (sequence.getMinValue() != null)
-            result = result.minvalue(sequence.getMinValue());
+        if (sequence.getMinvalue() != null)
+            result = result.minvalue(sequence.getMinvalue());
         else if (configuration.defaultSequenceFlags())
             result = result.noMinvalue();
 
-        if (sequence.getMaxValue() != null)
-            result = result.maxvalue(sequence.getMaxValue());
+        if (sequence.getMaxvalue() != null)
+            result = result.maxvalue(sequence.getMaxvalue());
         else if (configuration.defaultSequenceFlags())
             result = result.noMaxvalue();
 
@@ -217,7 +221,7 @@ final class DDL {
         if (configuration.flags().contains(PRIMARY_KEY))
             for (UniqueKey<?> key : table.getKeys())
                 if (key.isPrimary())
-                    result.add(constraint(key.getName()).primaryKey(key.getFieldsArray()));
+                    result.add(enforced(constraint(key.getUnqualifiedName()).primaryKey(key.getFieldsArray()), key.enforced()));
 
         return result;
     }
@@ -226,9 +230,9 @@ final class DDL {
         List<Constraint> result = new ArrayList<>();
 
         if (configuration.flags().contains(UNIQUE))
-            for (UniqueKey<?> key : sortIf(table.getKeys(), !configuration.respectConstraintOrder()))
+            for (UniqueKey<?> key : sortKeysIf(table.getKeys(), !configuration.respectConstraintOrder()))
                 if (!key.isPrimary())
-                    result.add(constraint(key.getName()).unique(key.getFieldsArray()));
+                    result.add(enforced(constraint(key.getUnqualifiedName()).unique(key.getFieldsArray()), key.enforced()));
 
         return result;
     }
@@ -237,8 +241,8 @@ final class DDL {
         List<Constraint> result = new ArrayList<>();
 
         if (configuration.flags().contains(FOREIGN_KEY))
-            for (ForeignKey<?, ?> key : sortIf(table.getReferences(), !configuration.respectConstraintOrder()))
-                result.add(constraint(key.getName()).foreignKey(key.getFieldsArray()).references(key.getKey().getTable(), key.getKey().getFieldsArray()));
+            for (ForeignKey<?, ?> key : sortKeysIf(table.getReferences(), !configuration.respectConstraintOrder()))
+                result.add(enforced(constraint(key.getUnqualifiedName()).foreignKey(key.getFieldsArray()).references(key.getKey().getTable(), key.getKey().getFieldsArray()), key.enforced()));
 
         return result;
     }
@@ -248,7 +252,7 @@ final class DDL {
 
         if (configuration.flags().contains(CHECK))
             for (Check<?> check : sortIf(table.getChecks(), !configuration.respectConstraintOrder()))
-                result.add(constraint(check.getName()).check(check.condition()));
+                result.add(enforced(constraint(check.getUnqualifiedName()).check(check.condition()), check.enforced()));
 
         return result;
     }
@@ -297,11 +301,11 @@ final class DDL {
         List<Schema> schemas = sortIf(meta.getSchemas(), !configuration.respectSchemaOrder());
 
         for (Schema schema : schemas)
-            if (configuration.flags().contains(SCHEMA) && !StringUtils.isBlank(schema.getName()))
+            if (configuration.flags().contains(SCHEMA) && !schema.getUnqualifiedName().empty())
                 if (configuration.createSchemaIfNotExists())
-                    queries.add(ctx.createSchemaIfNotExists(schema.getName()));
+                    queries.add(ctx.createSchemaIfNotExists(schema.getUnqualifiedName()));
                 else
-                    queries.add(ctx.createSchema(schema.getName()));
+                    queries.add(ctx.createSchema(schema.getUnqualifiedName()));
 
         if (configuration.flags().contains(TABLE)) {
             for (Schema schema : schemas) {
@@ -359,13 +363,33 @@ final class DDL {
         return ctx.queries(queries);
     }
 
-    private final <N extends Named> List<N> sortIf(List<N> input, boolean sort) {
+    private final <K extends Key<?>> List<K> sortKeysIf(List<K> input, boolean sort) {
         if (sort) {
-            List<N> result = new ArrayList<>(input);
-            Collections.sort(result, NamedComparator.INSTANCE);
+            List<K> result = new ArrayList<>(input);
+            Collections.sort(result, KEY_COMP);
+            Collections.sort(result, NAMED_COMP);
             return result;
         }
 
         return input;
+    }
+
+    private final <N extends Named> List<N> sortIf(List<N> input, boolean sort) {
+        if (sort) {
+            List<N> result = new ArrayList<>(input);
+            Collections.sort(result, NAMED_COMP);
+            return result;
+        }
+
+        return input;
+    }
+
+    private final Constraint enforced(ConstraintEnforcementStep check, boolean enforced) {
+
+
+
+
+
+        return check;
     }
 }

@@ -37,6 +37,12 @@
  */
 package org.jooq.impl;
 
+import static java.lang.Boolean.TRUE;
+import static java.util.Collections.unmodifiableList;
+import static org.jooq.impl.DSL.createSchema;
+import static org.jooq.impl.DSL.name;
+import static org.jooq.impl.DSL.schema;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -53,6 +59,7 @@ import org.jooq.Queries;
 import org.jooq.Query;
 import org.jooq.Source;
 import org.jooq.Version;
+import org.jooq.conf.InterpreterSearchSchema;
 import org.jooq.exception.DataDefinitionException;
 
 /**
@@ -68,8 +75,21 @@ final class VersionImpl implements Version {
     private VersionImpl(DSLContext ctx, String id, Meta meta, List<Parent> parents) {
         this.ctx = ctx;
         this.id = id;
-        this.meta = meta != null ? meta : ctx.meta("");
+        this.meta = meta != null ? meta : init(ctx);
         this.parents = parents;
+    }
+
+    private static final Meta init(DSLContext ctx) {
+        Meta result = ctx.meta("");
+
+        // TODO: Instead of reusing interpreter search path, we should have some dedicated
+        //       configuration for this.
+        // TODO: Should this be moved in DSLContext.meta()?
+        List<InterpreterSearchSchema> searchPath = ctx.settings().getInterpreterSearchPath();
+        for (InterpreterSearchSchema schema : searchPath)
+            result = result.apply(createSchema(schema(name(schema.getCatalog(), schema.getSchema()))));
+
+        return result;
     }
 
     VersionImpl(DSLContext ctx, String id, Meta meta, Version parent, Queries queries) {
@@ -110,40 +130,51 @@ final class VersionImpl implements Version {
     }
 
     @Override
-    public final Version apply(String newId, Query... diff) {
-        return apply(newId, ctx.queries(diff));
+    public final List<Version> parents() {
+        List<Version> result = new ArrayList<>(parents.size());
+
+        for (Parent parent : parents)
+            result.add(parent.version);
+
+        return unmodifiableList(result);
     }
 
     @Override
-    public final Version apply(String newId, Collection<? extends Query> diff) {
-        return apply(newId, ctx.queries(diff));
+    public final Version apply(String newId, Query... migration) {
+        return apply(newId, ctx.queries(migration));
     }
 
     @Override
-    public final Version apply(String newId, String diff) {
-        return apply(newId, ctx.parser().parse(diff));
+    public final Version apply(String newId, Collection<? extends Query> migration) {
+        return apply(newId, ctx.queries(migration));
     }
 
     @Override
-    public final Version apply(String newId, Queries diff) {
-        return new VersionImpl(ctx, newId, meta().apply(diff), this, diff);
+    public final Version apply(String newId, String migration) {
+        return apply(newId, ctx.parser().parse(migration));
     }
 
     @Override
-    public final Queries migrateFrom(Version version) {
-        VersionImpl subgraph = subgraphTo((VersionImpl) version);
+    public final Version apply(String newId, Queries migration) {
+        return new VersionImpl(ctx, newId, meta().apply(migration), this, migration);
+    }
+
+    @Override
+    public final Queries migrateTo(Version version) {
+        if (equals(version))
+            return ctx.queries();
+
+        VersionImpl subgraph = ((VersionImpl) version).subgraphTo(this);
+
+        if (subgraph == null)
 
 
 
 
 
+                throw new DataDefinitionException("No forward path available between versions " + id() + " and " + version.id() + ". Use Settings.migrationAllowsUndo to enable this feature.");
 
-
-
-
-
-
-        return subgraph.migrateFrom((VersionImpl) version, ctx.queries());
+        return migrateTo(subgraph, ctx.queries());
     }
 
     private final VersionImpl subgraphTo(VersionImpl ancestor) {
@@ -171,114 +202,105 @@ final class VersionImpl implements Version {
         return list == null ? null : new VersionImpl(ctx, id, meta, list);
     }
 
-    private final Queries migrateFrom(VersionImpl ancestor, Queries result) {
+    private final Queries migrateTo(VersionImpl target, Queries result) {
+        if (!target.forceApply())
+            return meta().migrateTo(target.meta());
 
+        for (Parent parent : target.parents) {
+            result = migrateTo(parent.version, result);
 
-
-
-
-
-        for (Parent parent : parents) {
-            result = parent.version.migrateFrom(ancestor, result);
-
-
-
-
-
-
+            if (!forceApply(parent.queries))
+                result = result.concat(parent.version.meta().migrateTo(target.meta()));
+            else
                 result = result.concat(parent.queries);
         }
 
         return result;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    private final boolean forceApply() {
+        for (Parent parent : parents)
+            if (forceApply(parent.queries))
+                return true;
+            else if (parent.version.forceApply())
+                return true;
+
+        return false;
+    }
+
+    private static final boolean forceApply(Queries queries) {
+        if (queries != null)
+            for (Query query : queries.queries())
+                if (!(query instanceof DDLQuery))
+                    return true;
+
+        return false;
+    }
+
+    @Override
+    public final Version commit(String newId, String... newMeta) {
+        return commit(newId, ctx.meta(newMeta));
+    }
+
+    @Override
+    public final Version commit(String newId, Source... newMeta) {
+        return commit(newId, ctx.meta(newMeta));
+    }
+
+    @Override
+    public final Version commit(String newId, Meta newMeta) {
+        return new VersionImpl(ctx, newId, newMeta, new Version[] { this });
+    }
+
+    private static final Version commonAncestor(Version v1, Version v2) {
+        if (v1.id().equals(v2.id()))
+            return v1;
+
+        // TODO: Find a better solution than the brute force one
+        // See e.g. https://en.wikipedia.org/wiki/Lowest_common_ancestor
+
+        Map<Version, Integer> a1 = ancestors(v1, new HashMap<>(), 1);
+        Map<Version, Integer> a2 = ancestors(v2, new HashMap<>(), 1);
+
+        Version version = null;
+        Integer distance = null;
+
+        for (Entry<Version, Integer> entry : a1.entrySet()) {
+            if (a2.containsKey(entry.getKey())) {
+
+                // TODO: What if there are several conflicting paths?
+                if (distance == null || distance > entry.getValue()) {
+                    version = entry.getKey();
+                    distance = entry.getValue();
+                }
+            }
+        }
+
+        if (version == null)
+            throw new DataDefinitionException("Versions " + v1.id() + " and " + v2.id() + " do not have a common ancestor");
+
+        return version;
+    }
+
+    private static Map<Version, Integer> ancestors(Version v, Map<Version, Integer> result, int distance) {
+        VersionImpl current = (VersionImpl) v;
+        Integer previous = result.get(current);
+
+        if (previous == null || previous > distance) {
+            result.put(current, distance);
+
+            for (Parent parent : current.parents)
+                ancestors(parent.version, result, distance + 1);
+        }
+
+        return result;
+    }
+
+    @Override
+    public final Version merge(String newId, Version with) {
+        Meta m = commonAncestor(this, with).meta();
+        return new VersionImpl(ctx, newId, m.apply(m.migrateTo(meta()).concat(m.migrateTo(with.meta()))), new Version[] { this, with });
+    }
 
     @Override
     public int hashCode() {

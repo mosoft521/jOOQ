@@ -41,6 +41,7 @@ import static org.jooq.impl.DSL.name;
 import static org.jooq.impl.Tools.EMPTY_SORTFIELD;
 import static org.jooq.util.xml.jaxb.TableConstraintType.PRIMARY_KEY;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -420,7 +421,7 @@ final class InformationSchemaMetaImpl extends AbstractMeta {
 
                     for (CheckConstraint cc : meta.getCheckConstraints()) {
                         if (constraintName.equals(name(cc.getConstraintCatalog(), cc.getConstraintSchema(), cc.getConstraintName()))) {
-                            table.checks.add(new CheckImpl<>(table, constraintName, DSL.condition(cc.getCheckClause())));
+                            table.checks.add(new CheckImpl<>(table, constraintName, DSL.condition(cc.getCheckClause()), true));
                             continue tableConstraintLoop;
                         }
                     }
@@ -448,12 +449,24 @@ final class InformationSchemaMetaImpl extends AbstractMeta {
             int precision = xs.getNumericPrecision() == null ? 0 : xs.getNumericPrecision();
             int scale = xs.getNumericScale() == null ? 0 : xs.getNumericScale();
             boolean nullable = true;
+            BigInteger startWith = xs.getStartValue();
+            BigInteger incrementBy = xs.getIncrement();
+            BigInteger minvalue = xs.getMinimumValue();
+            BigInteger maxvalue = xs.getMaximumValue();
+            Boolean cycle = xs.isCycleOption();
+            BigInteger cache = xs.getCache();
 
             @SuppressWarnings({ "rawtypes", "unchecked" })
             InformationSchemaSequence is = new InformationSchemaSequence(
                 xs.getSequenceName(),
                 schema,
-                type(typeName, length, precision, scale, nullable)
+                type(typeName, length, precision, scale, nullable),
+                startWith,
+                incrementBy,
+                minvalue,
+                maxvalue,
+                cycle,
+                cache
             );
 
             sequences.add(is);
@@ -636,8 +649,18 @@ final class InformationSchemaMetaImpl extends AbstractMeta {
          */
         private static final long serialVersionUID = -1246697252597049756L;
 
-        InformationSchemaSequence(String name, Schema schema, DataType<N> type) {
-            super(name, schema, type);
+        InformationSchemaSequence(String name, Schema schema, DataType<N> type, Number startWith, Number incrementBy, Number minvalue, Number maxvalue, Boolean cycle, Number cache) {
+            super(DSL.name(name),
+                schema,
+                type,
+                false,
+                startWith != null ? Tools.field(startWith, type) : null,
+                incrementBy != null ? Tools.field(incrementBy, type) : null,
+                minvalue != null ? Tools.field(minvalue, type) : null,
+                maxvalue != null ? Tools.field(maxvalue, type) : null,
+                Boolean.TRUE.equals(cycle),
+                cache != null ? Tools.field(cache, type) : null
+            );
         }
     }
 

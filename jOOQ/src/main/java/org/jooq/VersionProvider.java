@@ -37,8 +37,6 @@
  */
 package org.jooq;
 
-import java.util.Set;
-
 /**
  * An SPI that allows for providing a graph of versions.
  *
@@ -52,9 +50,8 @@ public interface VersionProvider {
      * <p>
      * This can include the entire set of known versions, or a subset thereof.
      * There is no requirement to provide a fully connected graph, although
-     * {@link Version#migrateFrom(Version)} and other operations are undefined
+     * {@link Version#migrateTo(Version)} and other operations are undefined
      * if two versions do not have a common ancestor.
      */
-    @Internal // TODO Produce a better type than Set<Version>. Possibly, #current() can be obtained from the new result type.
-    Set<Version> provide();
+    Versions provide();
 }

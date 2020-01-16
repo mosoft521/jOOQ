@@ -77,13 +77,13 @@ final class SourceMetaProvider implements MetaProvider {
         SQLDialect dialect = configuration.settings().getInterpreterDialect();
         switch (defaultIfNull(dialect, DEFAULT)) {
             case DEFAULT:
-                return new DDLInterpreterMetaProvider(configuration, sources).provide();
+                return new InterpreterMetaProvider(configuration, sources).provide();
 
             case DERBY:
             case H2:
             case HSQLDB:
             case SQLITE:
-                return new DDLMetaProvider(configuration, sources).provide();
+                return new TranslatingMetaProvider(configuration, sources).provide();
 
             default:
                 throw new UnsupportedOperationException("Interpreter dialect not yet supported: " + dialect);

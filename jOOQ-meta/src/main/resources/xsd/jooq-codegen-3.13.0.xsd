@@ -26,6 +26,10 @@
         <element name="generator" type="tns:Generator" minOccurs="1" maxOccurs="1">
           <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The GENERATOR configuration element contains information about source code generation itself.]]></jxb:javadoc></jxb:property></appinfo></annotation>
         </element>
+
+        <element name="basedir" type="string" minOccurs="0" maxOccurs="1">
+          <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The base directory that should be used instead of the JVM's working directory, to resolve all relative paths.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+        </element>
       </all>
     </complexType>
   </element>
@@ -1126,7 +1130,7 @@ jOOQ API, without adding custom data type bindings to them.]]></jxb:javadoc></jx
         </annotation>
       </element>
 
-      <element name="generatedAnnotation" type="boolean" default="true" minOccurs="0" maxOccurs="1">
+      <element name="generatedAnnotation" type="boolean" default="false" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Generate the {@link javax.annotation.Generated} or {@link javax.annotation.processing.Generated} annotation to indicate
 jOOQ version used for source code.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
@@ -1134,6 +1138,22 @@ jOOQ version used for source code.]]></jxb:javadoc></jxb:property></appinfo></an
       <element name="generatedAnnotationType" type="tns:GeneratedAnnotationType" default="DETECT_FROM_JDK" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Generate the {@link javax.annotation.Generated} or {@link javax.annotation.processing.Generated} annotation to indicate
 jOOQ version used for source code.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="nonnullAnnotation" type="boolean" default="false" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Whether non-nullable items should be annotated with the annotation type specified in {@link #nonnullAnnotationType}. In SQL and by consequence in jOOQ, non-nullability cannot be guaranteed statically. There may still be some cases (e.g. after unions, outer joins, etc.) where a normally non-null value turns out to be null!]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="nonnullAnnotationType" type="string" default="javax.annotation.Nonnull" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Specify the qualified annotation name for all non-nullable items in generated code, defaulting to the JSR-305 {@link javax.annotation.Nonnull} type.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="nullableAnnotation" type="boolean" default="false" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Whether nullable items should be annotated with the annotation type specified in {@link #nullableAnnotationType}. Unlike {@link #nonnullAnnotation}, nullability can be guaranteed as in SQL, and by consequence in jOOQ, every column expression can be made nullable using some SQL operation.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="nullableAnnotationType" type="string" default="javax.annotation.Nullable" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Specify the qualified annotation name for all nullable items in generated code, defaulting to the JSR-305 {@link javax.annotation.Nullable} type.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
       <element name="routines" type="boolean" default="true" minOccurs="0" maxOccurs="1">

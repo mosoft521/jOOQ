@@ -71,7 +71,6 @@ import org.jooq.LoaderFieldMapper;
 import org.jooq.LoaderFieldMapper.LoaderFieldContext;
 import org.jooq.LoaderJSONOptionsStep;
 import org.jooq.LoaderJSONStep;
-import org.jooq.LoaderListenerStep;
 import org.jooq.LoaderOptionsStep;
 import org.jooq.LoaderRowListener;
 import org.jooq.LoaderRowsStep;
@@ -83,6 +82,7 @@ import org.jooq.Source;
 import org.jooq.Table;
 import org.jooq.exception.DataAccessException;
 import org.jooq.exception.LoaderConfigurationException;
+import org.jooq.tools.JooqLogger;
 import org.jooq.tools.StringUtils;
 import org.jooq.tools.csv.CSVParser;
 import org.jooq.tools.csv.CSVReader;
@@ -104,6 +104,8 @@ final class LoaderImpl<R extends Record> implements
     LoaderJSONStep<R>,
     LoaderJSONOptionsStep<R>,
     Loader<R> {
+
+    private static final JooqLogger      log                     = JooqLogger.getLogger(LoaderImpl.class);
 
     // Configuration constants
     // -----------------------
@@ -157,6 +159,7 @@ final class LoaderImpl<R extends Record> implements
     private Field<?>[]                   source;
     private Field<?>[]                   fields;
     private LoaderFieldMapper            fieldMapper;
+    private boolean                      fieldsFromSource;
     private boolean[]                    primaryKey;
 
     // Result data
@@ -543,8 +546,14 @@ final class LoaderImpl<R extends Record> implements
     }
 
     @Override
-    public final LoaderListenerStep<R> fields(LoaderFieldMapper mapper) {
+    public final LoaderImpl<R> fields(LoaderFieldMapper mapper) {
         fieldMapper = mapper;
+        return this;
+    }
+
+    @Override
+    public LoaderImpl<R> fieldsFromSource() {
+        fieldsFromSource = true;
         return this;
     }
 
@@ -554,23 +563,34 @@ final class LoaderImpl<R extends Record> implements
         // [#5145] When loading arrays, or when CSV headers are ignored,
         // the source is still null at this stage.
         if (source == null)
-            source = Tools.fields(row.length);
+            if (fieldsFromSource)
+                throw new LoaderConfigurationException("Using fieldsFromSource() requires field names to be available in source.");
+            else
+                source = Tools.fields(row.length);
 
-        for (int i = 0; i < row.length; i++) {
-            final int index = i;
+        if (fieldMapper != null)
+            for (int i = 0; i < row.length; i++) {
+                final int index = i;
 
-            f[i] = fieldMapper.map(new LoaderFieldContext() {
-                @Override
-                public int index() {
-                    return index;
-                }
+                f[i] = fieldMapper.map(new LoaderFieldContext() {
+                    @Override
+                    public int index() {
+                        return index;
+                    }
 
-                @Override
-                public Field<?> field() {
-                    return source[index];
-                }
-            });
-        }
+                    @Override
+                    public Field<?> field() {
+                        return source[index];
+                    }
+                });
+            }
+
+        else if (fieldsFromSource)
+            for (int i = 0; i < row.length; i++) {
+                f[i] = table.field(source[i]);
+                if (f[i] == null)
+                    log.info("No column in target table " + table + " found for input field " + source[i]);
+            }
 
         fields(f);
     }
@@ -722,8 +742,8 @@ final class LoaderImpl<R extends Record> implements
                     if (row.getClass() != Object[].class)
                         row = Arrays.copyOf(row, row.length, Object[].class);
 
-                    // [#5145] Lazy initialisation of fields off the first row
-                    //         in case LoaderFieldMapper was used.
+                    // [#5145][#8755] Lazy initialisation of fields from the first row
+                    // in case fields(LoaderFieldMapper) or fieldsFromSource() was used
                     if (fields == null)
                         fields0(row);
 

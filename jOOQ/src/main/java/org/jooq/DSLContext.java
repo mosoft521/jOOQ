@@ -250,12 +250,20 @@ public interface DSLContext extends Scope , AutoCloseable  {
 
     /**
      * Initialise a {@link Version}.
+     * <p>
+     * This is EXPERIMENTAL functionality and subject to change in future jOOQ
+     * versions.
      */
+    @Internal
     Version version(String id);
 
     /**
      * Create a migration from the currently installed version to a new version.
+     * <p>
+     * This is EXPERIMENTAL functionality and subject to change in future jOOQ
+     * versions.
      */
+    @Internal
     Migration migrateTo(Version to);
 
     /**
@@ -5563,7 +5571,7 @@ public interface DSLContext extends Scope , AutoCloseable  {
      * @see DSL#table(Name)
      */
     @Support
-    <R extends Record> SelectWhereStep<R> selectFrom(Name table);
+    SelectWhereStep<Record> selectFrom(Name table);
 
     /**
      * Create a new DSL select statement, projecting <code>*</code>.
@@ -5587,7 +5595,7 @@ public interface DSLContext extends Scope , AutoCloseable  {
      */
     @Support
     @PlainSQL
-    <R extends Record> SelectWhereStep<R> selectFrom(SQL sql);
+    SelectWhereStep<Record> selectFrom(SQL sql);
 
     /**
      * Create a new DSL select statement, projecting <code>*</code>.
@@ -5612,7 +5620,7 @@ public interface DSLContext extends Scope , AutoCloseable  {
      */
     @Support
     @PlainSQL
-    <R extends Record> SelectWhereStep<R> selectFrom(String sql);
+    SelectWhereStep<Record> selectFrom(String sql);
 
     /**
      * Create a new DSL select statement, projecting <code>*</code>.
@@ -5637,7 +5645,7 @@ public interface DSLContext extends Scope , AutoCloseable  {
      */
     @Support
     @PlainSQL
-    <R extends Record> SelectWhereStep<R> selectFrom(String sql, Object... bindings);
+    SelectWhereStep<Record> selectFrom(String sql, Object... bindings);
 
     /**
      * Create a new DSL select statement, projecting <code>*</code>.
@@ -5662,7 +5670,7 @@ public interface DSLContext extends Scope , AutoCloseable  {
      */
     @Support
     @PlainSQL
-    <R extends Record> SelectWhereStep<R> selectFrom(String sql, QueryPart... parts);
+    SelectWhereStep<Record> selectFrom(String sql, QueryPart... parts);
 
     /**
      * Create a new DSL select statement.

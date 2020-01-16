@@ -45,6 +45,7 @@ import static org.jooq.tools.StringUtils.isBlank;
 import static org.jooq.util.xml.jaxb.TableConstraintType.PRIMARY_KEY;
 import static org.jooq.util.xml.jaxb.TableConstraintType.UNIQUE;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.Reader;
@@ -74,10 +75,14 @@ import javax.xml.transform.stream.StreamSource;
 
 import org.jooq.Constants;
 import org.jooq.DSLContext;
+import org.jooq.FilePattern;
+import org.jooq.FilePattern.Loader;
+import org.jooq.FilePattern.Sort;
 import org.jooq.Name;
 import org.jooq.SQLDialect;
 import org.jooq.SortOrder;
 import org.jooq.Source;
+import org.jooq.exception.IOException;
 import org.jooq.impl.DSL;
 import org.jooq.meta.AbstractDatabase;
 import org.jooq.meta.AbstractIndexDefinition;
@@ -100,8 +105,6 @@ import org.jooq.meta.SchemaDefinition;
 import org.jooq.meta.SequenceDefinition;
 import org.jooq.meta.TableDefinition;
 import org.jooq.meta.UDTDefinition;
-import org.jooq.meta.tools.FilePattern;
-import org.jooq.meta.tools.FilePattern.Loader;
 import org.jooq.tools.JooqLogger;
 import org.jooq.tools.StringUtils;
 import org.jooq.tools.jdbc.JDBCUtils;
@@ -151,9 +154,13 @@ public class XMLDatabase extends AbstractDatabase {
                 throw new RuntimeException("Must provide an xmlFile property");
 
             try {
-                FilePattern.load("UTF-8", xml, FilePattern.fileComparator(sort), new Loader() {
+                new FilePattern()
+                        .basedir(new File(getBasedir()))
+                        .pattern(xml)
+                        .sort(Sort.of(sort))
+                        .load(new Loader() {
                     @Override
-                    public void load(Source source) throws Exception {
+                    public void load(Source source) {
                         String content;
                         Reader reader = null;
 
@@ -196,6 +203,9 @@ public class XMLDatabase extends AbstractDatabase {
 
                                     transformer.transform(new StreamSource(reader), new StreamResult(writer));
                                     content = writer.getBuffer().toString();
+                                }
+                                catch (java.io.IOException e) {
+                                    throw new IOException("Error while loading XSL file", e);
                                 }
                                 catch (TransformerException e) {
                                     throw new RuntimeException("Error while transforming XML file " + xml + " with XSL file " + xsl, e);

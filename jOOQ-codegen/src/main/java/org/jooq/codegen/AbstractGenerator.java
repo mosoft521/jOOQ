@@ -64,8 +64,12 @@ abstract class AbstractGenerator implements Generator {
     boolean                            generateRelations                  = true;
     boolean                            generateImplicitJoinPathsToOne     = true;
     boolean                            generateInstanceFields             = true;
-    boolean                            generateGeneratedAnnotation        = true;
-    GeneratedAnnotationType            generateGeneratedAnnotationType    = GeneratedAnnotationType.DETECT_FROM_JDK;
+    boolean                            generateGeneratedAnnotation        = false;
+    GeneratedAnnotationType            generatedGeneratedAnnotationType   = GeneratedAnnotationType.DETECT_FROM_JDK;
+    boolean                            generateNonnullAnnotation          = false;
+    String                             generatedNonnullAnnotationType     = "javax.annotation.Nonnull";
+    boolean                            generateNullableAnnotation         = false;
+    String                             generatedNullableAnnotationType    = "javax.annotation.Nullable";
     boolean                            useSchemaVersionProvider           = false;
     boolean                            useCatalogVersionProvider          = false;
     boolean                            generateRoutines                   = true;
@@ -289,12 +293,52 @@ abstract class AbstractGenerator implements Generator {
 
     @Override
     public GeneratedAnnotationType generateGeneratedAnnotationType() {
-        return generateGeneratedAnnotationType;
+        return generatedGeneratedAnnotationType;
     }
 
     @Override
     public void setGenerateGeneratedAnnotationType(GeneratedAnnotationType generateGeneratedAnnotationType) {
-        this.generateGeneratedAnnotationType = generateGeneratedAnnotationType;
+        this.generatedGeneratedAnnotationType = generateGeneratedAnnotationType;
+    }
+
+    @Override
+    public boolean generateNonnullAnnotation() {
+        return generateNonnullAnnotation;
+    }
+
+    @Override
+    public void setGenerateNonnullAnnotation(boolean generateNonnullAnnotation) {
+        this.generateNonnullAnnotation = generateNonnullAnnotation;
+    }
+
+    @Override
+    public String generatedNonnullAnnotationType() {
+        return generatedNonnullAnnotationType;
+    }
+
+    @Override
+    public void setGeneratedNonnullAnnotationType(String generatedNonnullAnnotationType) {
+        this.generatedNonnullAnnotationType = generatedNonnullAnnotationType;
+    }
+
+    @Override
+    public boolean generateNullableAnnotation() {
+        return generateNullableAnnotation;
+    }
+
+    @Override
+    public void setGenerateNullableAnnotation(boolean generateNullableAnnotation) {
+        this.generateNullableAnnotation = generateNullableAnnotation;
+    }
+
+    @Override
+    public String generatedNullableAnnotationType() {
+        return generatedNullableAnnotationType;
+    }
+
+    @Override
+    public void setGeneratedNullableAnnotationType(String generatedNullableAnnotationType) {
+        this.generatedNullableAnnotationType = generatedNullableAnnotationType;
     }
 
     @Override

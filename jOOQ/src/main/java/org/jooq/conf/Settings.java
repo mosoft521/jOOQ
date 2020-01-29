@@ -77,8 +77,12 @@ public class Settings
     protected Boolean renderOrderByRownumberForEmulatedPagination = true;
     @XmlElement(defaultValue = "true")
     protected Boolean renderOutputForSQLServerReturningClause = true;
+    @XmlElement(defaultValue = "false")
+    protected Boolean renderParenthesisAroundSetOperationQueries = false;
     @XmlElement(defaultValue = "true")
     protected Boolean fetchTriggerValuesAfterSQLServerOutput = true;
+    @XmlElement(defaultValue = "false")
+    protected Boolean transformAnsiJoinToTableLists = false;
     @XmlElement(defaultValue = "false")
     protected Boolean transformTableListsToAnsiJoin = false;
     @XmlElement(defaultValue = "DEFAULT")
@@ -642,6 +646,37 @@ public class Settings
     }
 
     /**
+     * Whether queries combined with set operators (e.g. UNION and UNION ALL) should always be surrounded by a parenthesis pair.
+     * <p>
+     * By default (i.e. when this setting is set to <code>false</code> jOOQ will only render parenthesis pairs around queries combined with set operators when required.
+     * This is for example the case when set operators are nested, when non-associative operators like EXCEPT are used, or when the queries are rendered as derived tables.
+     * <p>
+     * When this setting is set to <code>true</code> the queries combined with set operators will always be surrounded by a parenthesis pair.
+     * <p>
+     * For details, see <a href="https://github.com/jOOQ/jOOQ/issues/3676">https://github.com/jOOQ/jOOQ/issues/3676</a> and <a href="https://github.com/jOOQ/jOOQ/issues/9751">https://github.com/jOOQ/jOOQ/issues/9751</a>.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isRenderParenthesisAroundSetOperationQueries() {
+        return renderParenthesisAroundSetOperationQueries;
+    }
+
+    /**
+     * Sets the value of the renderParenthesisAroundSetOperationQueries property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setRenderParenthesisAroundSetOperationQueries(Boolean value) {
+        this.renderParenthesisAroundSetOperationQueries = value;
+    }
+
+    /**
      * Fetch trigger values after SQL Server <code>OUTPUT</code> clause.
      * <p>
      * SQL Server <code>OUTPUT</code> statements do not support fetching trigger generated values.
@@ -670,6 +705,38 @@ public class Settings
      */
     public void setFetchTriggerValuesAfterSQLServerOutput(Boolean value) {
         this.fetchTriggerValuesAfterSQLServerOutput = value;
+    }
+
+    /**
+     * Transform ANSI join to table lists if possible
+     * <p>
+     * Historically, prior to ANSI join syntax, joins were implemented by listing tables in
+     * the FROM clause and providing join predicates in the WHERE clause, possibly using vendor specific
+     * operators like <code>(+)</code> (Oracle, DB2) or <code>*=</code> (SQL Server) for outer join
+     * support. For backwards compatibility with older RDBMS versions, ANSI joins in jOOQ code may be
+     * converted to equivalent table lists in generated SQL using this flag.
+     * <p>
+     * This feature is available in the commercial distribution only.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isTransformAnsiJoinToTableLists() {
+        return transformAnsiJoinToTableLists;
+    }
+
+    /**
+     * Sets the value of the transformAnsiJoinToTableLists property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setTransformAnsiJoinToTableLists(Boolean value) {
+        this.transformAnsiJoinToTableLists = value;
     }
 
     /**
@@ -2080,8 +2147,18 @@ public class Settings
         return this;
     }
 
+    public Settings withRenderParenthesisAroundSetOperationQueries(Boolean value) {
+        setRenderParenthesisAroundSetOperationQueries(value);
+        return this;
+    }
+
     public Settings withFetchTriggerValuesAfterSQLServerOutput(Boolean value) {
         setFetchTriggerValuesAfterSQLServerOutput(value);
+        return this;
+    }
+
+    public Settings withTransformAnsiJoinToTableLists(Boolean value) {
+        setTransformAnsiJoinToTableLists(value);
         return this;
     }
 
@@ -2621,7 +2698,9 @@ public class Settings
         builder.append("renderScalarSubqueriesForStoredFunctions", renderScalarSubqueriesForStoredFunctions);
         builder.append("renderOrderByRownumberForEmulatedPagination", renderOrderByRownumberForEmulatedPagination);
         builder.append("renderOutputForSQLServerReturningClause", renderOutputForSQLServerReturningClause);
+        builder.append("renderParenthesisAroundSetOperationQueries", renderParenthesisAroundSetOperationQueries);
         builder.append("fetchTriggerValuesAfterSQLServerOutput", fetchTriggerValuesAfterSQLServerOutput);
+        builder.append("transformAnsiJoinToTableLists", transformAnsiJoinToTableLists);
         builder.append("transformTableListsToAnsiJoin", transformTableListsToAnsiJoin);
         builder.append("backslashEscaping", backslashEscaping);
         builder.append("paramType", paramType);
@@ -2859,12 +2938,30 @@ public class Settings
                 return false;
             }
         }
+        if (renderParenthesisAroundSetOperationQueries == null) {
+            if (other.renderParenthesisAroundSetOperationQueries!= null) {
+                return false;
+            }
+        } else {
+            if (!renderParenthesisAroundSetOperationQueries.equals(other.renderParenthesisAroundSetOperationQueries)) {
+                return false;
+            }
+        }
         if (fetchTriggerValuesAfterSQLServerOutput == null) {
             if (other.fetchTriggerValuesAfterSQLServerOutput!= null) {
                 return false;
             }
         } else {
             if (!fetchTriggerValuesAfterSQLServerOutput.equals(other.fetchTriggerValuesAfterSQLServerOutput)) {
+                return false;
+            }
+        }
+        if (transformAnsiJoinToTableLists == null) {
+            if (other.transformAnsiJoinToTableLists!= null) {
+                return false;
+            }
+        } else {
+            if (!transformAnsiJoinToTableLists.equals(other.transformAnsiJoinToTableLists)) {
                 return false;
             }
         }
@@ -3459,7 +3556,9 @@ public class Settings
         result = ((prime*result)+((renderScalarSubqueriesForStoredFunctions == null)? 0 :renderScalarSubqueriesForStoredFunctions.hashCode()));
         result = ((prime*result)+((renderOrderByRownumberForEmulatedPagination == null)? 0 :renderOrderByRownumberForEmulatedPagination.hashCode()));
         result = ((prime*result)+((renderOutputForSQLServerReturningClause == null)? 0 :renderOutputForSQLServerReturningClause.hashCode()));
+        result = ((prime*result)+((renderParenthesisAroundSetOperationQueries == null)? 0 :renderParenthesisAroundSetOperationQueries.hashCode()));
         result = ((prime*result)+((fetchTriggerValuesAfterSQLServerOutput == null)? 0 :fetchTriggerValuesAfterSQLServerOutput.hashCode()));
+        result = ((prime*result)+((transformAnsiJoinToTableLists == null)? 0 :transformAnsiJoinToTableLists.hashCode()));
         result = ((prime*result)+((transformTableListsToAnsiJoin == null)? 0 :transformTableListsToAnsiJoin.hashCode()));
         result = ((prime*result)+((backslashEscaping == null)? 0 :backslashEscaping.hashCode()));
         result = ((prime*result)+((paramType == null)? 0 :paramType.hashCode()));

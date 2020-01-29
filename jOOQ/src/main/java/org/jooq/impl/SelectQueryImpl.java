@@ -192,6 +192,8 @@ import org.jooq.WindowDefinition;
 import org.jooq.exception.DataAccessException;
 import org.jooq.impl.Tools.BooleanDataKey;
 import org.jooq.impl.Tools.DataKey;
+import org.jooq.impl.Transform.Transformer;
+import org.jooq.tools.JooqLogger;
 import org.jooq.tools.StringUtils;
 
 /**
@@ -207,6 +209,7 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
      * Generated UID
      */
     private static final long            serialVersionUID                = 1646393178384872967L;
+    private static final JooqLogger      log                             = JooqLogger.getLogger(SelectQueryImpl.class);
     private static final Clause[]        CLAUSES                         = { SELECT };
     private static final Set<SQLDialect> EMULATE_SELECT_INTO_AS_CTAS     = SQLDialect.supportedBy(CUBRID, DERBY, FIREBIRD, H2, HSQLDB, MARIADB, MYSQL, POSTGRES, SQLITE);
     private static final Set<SQLDialect> NO_SUPPORT_FOR_UPDATE           = SQLDialect.supportedBy(CUBRID);
@@ -911,7 +914,7 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
     /**
      * The default LIMIT / OFFSET clause in most dialects
      */
-    private void toSQLReferenceLimitDefault(Context<?> context) {
+    private final void toSQLReferenceLimitDefault(Context<?> context) {
         Object data = context.data(DATA_RENDER_TRAILING_LIMIT_IF_APPLICABLE);
 
         context.data(DATA_RENDER_TRAILING_LIMIT_IF_APPLICABLE, true);
@@ -1140,6 +1143,7 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
         boolean qualify = context.qualify();
 
         int unionOpSize = unionOp.size();
+        boolean unionParensRequired = false;
         boolean unionOpNesting = false;
 
         // The SQL standard specifies:
@@ -1232,7 +1236,10 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
                     case UNION_ALL:     context.start(SELECT_UNION_ALL);     break;
                 }
 
-                unionParenthesis(context, '(', getSelect().toArray(EMPTY_FIELD));
+                // [#3676] There might be cases where nested set operations do not
+                //         imply required parentheses in some dialects, but better
+                //         play safe than sorry
+                unionParenthesis(context, '(', getSelect().toArray(EMPTY_FIELD), unionParensRequired = unionOpNesting || unionParensRequired(context));
             }
         }
 
@@ -1344,6 +1351,9 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
             Object previousCollected = context.data(DATA_COLLECTED_SEMI_ANTI_JOIN, null);
 
             TableList tablelist = getFrom();
+
+
+
 
 
 
@@ -1521,7 +1531,7 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
         // SET operations like UNION, EXCEPT, INTERSECT
         // --------------------------------------------
         if (unionOpSize > 0) {
-            unionParenthesis(context, ')', null);
+            unionParenthesis(context, ')', null, unionParensRequired);
 
             for (int i = 0; i < unionOpSize; i++) {
                 CombineOperator op = unionOp.get(i);
@@ -1531,14 +1541,16 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
                            .visit(op.toKeyword(family))
                            .sql(' ');
 
-                    unionParenthesis(context, '(', other.getSelect().toArray(EMPTY_FIELD));
+                    if (!unionParenthesis(context, '(', other.getSelect().toArray(EMPTY_FIELD), unionParensRequired) && !unionParensRequired)
+                        context.formatNewLine();
+
                     context.visit(other);
-                    unionParenthesis(context, ')', null);
+                    unionParenthesis(context, ')', null, unionParensRequired);
                 }
 
                 // [#1658] Close parentheses opened previously
                 if (i < unionOpSize - 1)
-                    unionParenthesis(context, ')', null);
+                    unionParenthesis(context, ')', null, unionParensRequired);
 
                 switch (unionOp.get(i)) {
                     case EXCEPT:        context.end(SELECT_EXCEPT);        break;
@@ -1584,6 +1596,97 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
             context.qualify(qualify);
         }
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     private final void toSQLOrderBy(
         Context<?> ctx,
@@ -1773,7 +1876,35 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
         return false;
     }
 
-    private final void unionParenthesis(Context<?> ctx, char parenthesis, Field<?>[] fields) {
+    private final boolean unionParensRequired(Context<?> context) {
+        if (unionParensRequired(this) || context.settings().isRenderParenthesisAroundSetOperationQueries())
+            return true;
+
+        CombineOperator op = unionOp.get(0);
+
+        // [#3676] EXCEPT and EXCEPT ALL are not associative
+        if ((op == EXCEPT || op == EXCEPT_ALL) && union.get(0).size() > 1)
+            return true;
+
+        // [#3676] if a query has an ORDER BY or LIMIT clause parens are required
+        for (QueryPartList<Select<?>> s1 : union)
+            for (Select<?> s2 : s1)
+                if (s2 instanceof SelectQueryImpl
+                        && unionParensRequired((SelectQueryImpl<?>) s2))
+                    return true;
+                else if (s2 instanceof SelectImpl
+                        && ((SelectImpl) s2).getDelegate() instanceof SelectQueryImpl
+                        && unionParensRequired((SelectQueryImpl<?>) ((SelectImpl) s2).getDelegate()))
+                    return true;
+
+        return false;
+    }
+
+    private final boolean unionParensRequired(SelectQueryImpl<?> select) {
+        return select.orderBy.size() > 0 || select.limit.isApplicable();
+    }
+
+    private final boolean unionParenthesis(Context<?> ctx, char parenthesis, Field<?>[] fields, boolean parensRequired) {
         boolean derivedTable =
 
             // [#3579] [#6431] [#7222] Some databases don't support nested set operations at all
@@ -1792,14 +1923,16 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
             || (ctx.subquery() && UNION_PARENTHESIS_IN_DERIVED_TABLES.contains(ctx.family()))
             ;
 
-        if (')' == parenthesis) {
+        parensRequired |= derivedTable;
+
+        if (parensRequired && ')' == parenthesis) {
             ctx.formatIndentEnd()
                .formatNewLine();
         }
 
         // [#3579] Nested set operators aren't supported in some databases. Emulate them via derived tables...
         // [#7222] Do this only in the presence of actual nested set operators
-        else if ('(' == parenthesis) {
+        else if (parensRequired && '(' == parenthesis) {
             if (derivedTable) {
                 ctx.formatNewLine()
                    .visit(K_SELECT).sql(' ');
@@ -1828,19 +1961,23 @@ final class SelectQueryImpl<R extends Record> extends AbstractResultQuery<R> imp
                 break;
 
             default:
-                ctx.sql(parenthesis);
+                if (parensRequired)
+                    ctx.sql(parenthesis);
+
                 break;
         }
 
-        if ('(' == parenthesis) {
+        if (parensRequired && '(' == parenthesis) {
             ctx.formatIndentStart()
                .formatNewLine();
         }
 
-        else if (')'== parenthesis) {
+        else if (parensRequired && ')' == parenthesis) {
             if (derivedTable)
                 ctx.sql(" x");
         }
+
+        return parensRequired;
     }
 
     @Override

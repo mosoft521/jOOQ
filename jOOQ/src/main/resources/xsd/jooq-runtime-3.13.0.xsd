@@ -155,6 +155,17 @@ be enabled as well.
 For details, see <a href="https://github.com/jOOQ/jOOQ/issues/4498">https://github.com/jOOQ/jOOQ/issues/4498</a>.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
+      <element name="renderParenthesisAroundSetOperationQueries" type="boolean" minOccurs="0" maxOccurs="1" default="false">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Whether queries combined with set operators (e.g. UNION and UNION ALL) should always be surrounded by a parenthesis pair.
+<p>
+By default (i.e. when this setting is set to <code>false</code> jOOQ will only render parenthesis pairs around queries combined with set operators when required.
+This is for example the case when set operators are nested, when non-associative operators like EXCEPT are used, or when the queries are rendered as derived tables.
+<p>
+When this setting is set to <code>true</code> the queries combined with set operators will always be surrounded by a parenthesis pair.
+<p>
+For details, see <a href="https://github.com/jOOQ/jOOQ/issues/3676">https://github.com/jOOQ/jOOQ/issues/3676</a> and <a href="https://github.com/jOOQ/jOOQ/issues/9751">https://github.com/jOOQ/jOOQ/issues/9751</a>.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="fetchTriggerValuesAfterSQLServerOutput" type="boolean" minOccurs="0" maxOccurs="1" default="true">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Fetch trigger values after SQL Server <code>OUTPUT</code> clause.
 <p>
@@ -166,6 +177,21 @@ included in the <code>OUTPUT</code> clause.
 For details, see <a href="https://github.com/jOOQ/jOOQ/issues/4498">https://github.com/jOOQ/jOOQ/issues/4498</a>.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
+      <element name="transformAnsiJoinToTableLists" type="boolean" minOccurs="0" maxOccurs="1" default="false">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Transform ANSI join to table lists if possible
+<p>
+Historically, prior to ANSI join syntax, joins were implemented by listing tables in
+the FROM clause and providing join predicates in the WHERE clause, possibly using vendor specific
+operators like <code>(+)</code> (Oracle, DB2) or <code>*=</code> (SQL Server) for outer join
+support. For backwards compatibility with older RDBMS versions, ANSI joins in jOOQ code may be
+converted to equivalent table lists in generated SQL using this flag.
+<p>
+This flag has a limited implementation that supports inner joins (in most cases) and outer joins
+(only for simple comparison predicates).
+<p>
+This feature is available in the commercial distribution only.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="transformTableListsToAnsiJoin" type="boolean" minOccurs="0" maxOccurs="1" default="false">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Transform table lists to ANSI join if possible
 <p>
@@ -174,6 +200,8 @@ the FROM clause and providing join predicates in the WHERE clause, possibly usin
 operators like <code>(+)</code> (Oracle, DB2) or <code>*=</code> (SQL Server) for outer join
 support. Migrating such join syntax is tedious. The jOOQ parser can parse the old syntax and
 this flag enables the transformation to ANSI join syntax.
+<p>
+This flag has not been implemented yet!
 <p>
 This feature is available in the commercial distribution only.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
@@ -501,14 +529,65 @@ jOOQ queries, for which no specific fetchSize value was specified.]]></jxb:javad
     <annotation><appinfo><jxb:class><jxb:javadoc><![CDATA[The runtime schema and table mapping.]]></jxb:javadoc></jxb:class></appinfo></annotation>
 
     <all>
+      <element name="defaultCatalog" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The default catalog as defined in {@link org.jooq.Catalog#getName()}.
+<p>
+This catalog will be omitted in rendered SQL.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="defaultSchema" type="string" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The default schema as defined in {@link org.jooq.Schema#getName()}.
 <p>
 This schema will be omitted in rendered SQL.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
+      <element name="catalogs" type="jooq-runtime:MappedCatalogs" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The mapped catalogs configuration.
+<p>
+Either &lt;catalogs/&gt; or &lt;schemata/&gt; must be provided]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
       <element name="schemata" type="jooq-runtime:MappedSchemata" minOccurs="0" maxOccurs="1">
-        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The mapped schemata configuration.]]></jxb:javadoc></jxb:property></appinfo></annotation>
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The mapped schemata configuration.
+<p>
+Either &lt;catalogs/&gt; or &lt;schemata/&gt; must be provided]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+    </all>
+  </complexType>
+
+  <complexType name="MappedCatalogs">
+    <sequence>
+      <element name="catalog" type="jooq-runtime:MappedCatalog" minOccurs="0" maxOccurs="unbounded"/>
+    </sequence>
+  </complexType>
+
+  <complexType name="MappedCatalog">
+    <annotation><appinfo><jxb:class><jxb:javadoc><![CDATA[A catalog mapping configuration.]]></jxb:javadoc></jxb:class></appinfo></annotation>
+
+    <all>
+      <element name="input" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The input catalog name as defined in {@link org.jooq.Catalog#getName()}
+<p>
+Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="inputExpression" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[A regular expression matching the input catalog name as defined in {@link org.jooq.Catalog#getName()}
+<p>
+Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="output" type="string" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The output catalog as it will be rendered in SQL.
+<ul>
+<li>When this is omitted, you can still apply schema and table mapping.</li>
+<li>When &lt;input/&gt; is provided, &lt;output/&gt; is a constant value.</li>
+<li>When &lt;inputExpression/&gt; is provided, &lt;output/&gt; is a replacement expression</li>
+</ul>]]></jxb:javadoc></jxb:property></appinfo></annotation>
+      </element>
+
+      <element name="schemata" type="jooq-runtime:MappedSchemata" minOccurs="0" maxOccurs="1">
+        <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[Configure schema mapping for runtime table rewriting in generated SQL.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
     </all>
   </complexType>
@@ -531,6 +610,7 @@ Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javad
 
       <element name="inputExpression" type="string" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[A regular expression matching the input schema name as defined in {@link org.jooq.Schema#getName()}
+<p>
 Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
@@ -562,11 +642,13 @@ Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javad
 
       <element name="input" type="string" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[The input table as defined in {@link org.jooq.Table#getName()}
+<p>
 Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided.]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 
       <element name="inputExpression" type="string" minOccurs="0" maxOccurs="1">
         <annotation><appinfo><jxb:property><jxb:javadoc><![CDATA[A regular expression matching the input table name as defined in {@link org.jooq.Table#getName()}
+<p>
 Either &lt;input/&gt; or &lt;inputExpression/&gt; must be provided]]></jxb:javadoc></jxb:property></appinfo></annotation>
       </element>
 

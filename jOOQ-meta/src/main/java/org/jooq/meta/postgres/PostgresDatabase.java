@@ -78,6 +78,7 @@ import static org.jooq.meta.postgres.pg_catalog.Tables.PG_INDEX;
 import static org.jooq.meta.postgres.pg_catalog.Tables.PG_INHERITS;
 import static org.jooq.meta.postgres.pg_catalog.Tables.PG_NAMESPACE;
 import static org.jooq.meta.postgres.pg_catalog.Tables.PG_PROC;
+import static org.jooq.meta.postgres.pg_catalog.Tables.PG_SEQUENCE;
 import static org.jooq.meta.postgres.pg_catalog.Tables.PG_TYPE;
 import static org.jooq.util.postgres.PostgresDSL.array;
 import static org.jooq.util.postgres.PostgresDSL.arrayAppend;
@@ -157,6 +158,7 @@ public class PostgresDatabase extends AbstractDatabase {
 
     private static Boolean is84;
     private static Boolean is94;
+    private static Boolean is10;
     private static Boolean is11;
     private static Boolean canUseRoutines;
     private static Boolean canCastToEnumType;
@@ -325,11 +327,8 @@ public class PostgresDatabase extends AbstractDatabase {
             TableDefinition uniqueKeyTable = getTable(uniqueKeySchema, uniqueKeyTableName);
 
             if (foreignKeyTable != null && uniqueKeyTable != null)
-
-                // [#986] Add the table name as a namespace prefix to the key
-                // name. In Postgres, foreign key names are only unique per table
                 relations.addForeignKey(
-                    foreignKeyTableName + "__" + foreignKey,
+                    foreignKey,
                     foreignKeyTable,
                     foreignKeyTable.getColumn(foreignKeyColumn),
                     uniqueKey,
@@ -832,7 +831,12 @@ public class PostgresDatabase extends AbstractDatabase {
                 // Calculate overload index if applicable
                 when(
                     count().over(partitionBy(r1.ROUTINE_SCHEMA, r1.ROUTINE_NAME)).gt(one()),
-                    rowNumber().over(partitionBy(r1.ROUTINE_SCHEMA, r1.ROUTINE_NAME).orderBy(r1.SPECIFIC_NAME))
+                    rowNumber().over(partitionBy(r1.ROUTINE_SCHEMA, r1.ROUTINE_NAME).orderBy(
+
+                        // [#9754] To stabilise overload calculation, we use the type signature
+                        // replace(field("pg_get_function_arguments({0})", VARCHAR, oid(PG_PROC)), inline('"'), inline("")),
+                        r1.SPECIFIC_NAME
+                    ))
                 ).as("overload"),
 
                 isAgg)
@@ -899,6 +903,15 @@ public class PostgresDatabase extends AbstractDatabase {
             is94 = exists(PARAMETERS.PARAMETER_DEFAULT);
 
         return is94;
+    }
+
+    boolean is10() {
+
+        // [#7785] pg_sequence was added in PostgreSQL 10 only
+        if (is10 == null)
+            is10 = exists(PG_SEQUENCE.SEQRELID);
+
+        return is10;
     }
 
     boolean is11() {

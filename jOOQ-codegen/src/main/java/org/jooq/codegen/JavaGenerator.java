@@ -164,7 +164,6 @@ import org.jooq.tools.StringUtils;
 import org.jooq.tools.reflect.Reflect;
 import org.jooq.tools.reflect.ReflectException;
 // ...
-// ...
 
 
 /**
@@ -4730,12 +4729,11 @@ public class JavaGenerator extends AbstractGenerator {
                     flags ? numberLiteral(sequence.getCache()) : "null"
                 );
             else
-                out.tab(1).println("public static final %s<%s> %s = %s.<%s> createSequence(\"%s\", %s, %s, %s, %s, %s, %s, %s, %s);",
+                out.tab(1).println("public static final %s<%s> %s = %s.createSequence(\"%s\", %s, %s, %s, %s, %s, %s, %s, %s);",
                     Sequence.class,
                     seqType,
                     seqId,
                     Internal.class,
-                    seqType,
                     seqName,
                     schemaId,
                     typeRef,

@@ -47,6 +47,7 @@ import static org.jooq.impl.DSL.not;
 import static org.jooq.impl.DSL.nullif;
 import static org.jooq.impl.DSL.one;
 import static org.jooq.impl.DSL.select;
+import static org.jooq.impl.DSL.when;
 import static org.jooq.meta.h2.information_schema.tables.Columns.COLUMNS;
 import static org.jooq.meta.h2.information_schema.tables.Constraints.CONSTRAINTS;
 import static org.jooq.meta.h2.information_schema.tables.CrossReferences.CROSS_REFERENCES;
@@ -74,6 +75,7 @@ import org.jooq.Select;
 import org.jooq.SortOrder;
 import org.jooq.Table;
 import org.jooq.TableField;
+import org.jooq.TableOptions.TableType;
 import org.jooq.impl.DSL;
 import org.jooq.meta.AbstractDatabase;
 import org.jooq.meta.AbstractIndexDefinition;
@@ -449,21 +451,24 @@ public class H2Database extends AbstractDatabase {
         for (Record record : create().select(
                     Tables.TABLE_SCHEMA,
                     Tables.TABLE_NAME,
+                    when(Tables.TABLE_TYPE.eq(inline("VIEW")), inline(TableType.VIEW.name()))
+                       .when(Tables.STORAGE_TYPE.like(inline("%TEMPORARY%")), inline(TableType.TEMPORARY.name()))
+                       .else_(inline(TableType.TABLE.name())).as("table_type"),
                     Tables.REMARKS)
                 .from(TABLES)
                 .where(Tables.TABLE_SCHEMA.in(getInputSchemata()))
                 .orderBy(
                     Tables.TABLE_SCHEMA,
-                    Tables.TABLE_NAME)
-                .fetch()) {
+                    Tables.TABLE_NAME)) {
 
             SchemaDefinition schema = getSchema(record.get(Tables.TABLE_SCHEMA));
 
             if (schema != null) {
                 String name = record.get(Tables.TABLE_NAME);
                 String comment = record.get(Tables.REMARKS);
+                TableType tableType = record.get("table_type", TableType.class);
 
-                H2TableDefinition table = new H2TableDefinition(schema, name, comment);
+                H2TableDefinition table = new H2TableDefinition(schema, name, comment, tableType);
                 result.add(table);
             }
         }

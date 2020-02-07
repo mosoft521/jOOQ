@@ -126,6 +126,8 @@ import org.jooq.Sequence;
 import org.jooq.SortField;
 import org.jooq.Table;
 import org.jooq.TableField;
+import org.jooq.TableOptions;
+import org.jooq.TableOptions.TableType;
 import org.jooq.UniqueKey;
 import org.jooq.exception.DataAccessException;
 import org.jooq.exception.DataTypeException;
@@ -160,7 +162,7 @@ final class MetaImpl extends AbstractMeta {
         super(configuration);
 
         this.databaseMetaData = databaseMetaData;
-        this.inverseSchemaCatalog = INVERSE_SCHEMA_CATALOG.contains(configuration.family());
+        this.inverseSchemaCatalog = INVERSE_SCHEMA_CATALOG.contains(family());
     }
 
     private interface MetaFunction {
@@ -291,6 +293,12 @@ final class MetaImpl extends AbstractMeta {
                     @Override
                     public Result<Record> run(DatabaseMetaData meta) throws SQLException {
                         return dsl().fetch(
+
+
+
+
+
+
                             meta.getSchemas(),
 
                             // [#2681] Work around a flaw in the MySQL JDBC driver
@@ -346,7 +354,7 @@ final class MetaImpl extends AbstractMeta {
                 public Result<Record> run(DatabaseMetaData meta) throws SQLException {
                     String[] types = null;
 
-                    switch (configuration.family()) {
+                    switch (family()) {
 
                         // [#3977] PostgreSQL returns other object types, too
 
@@ -384,12 +392,16 @@ final class MetaImpl extends AbstractMeta {
 
 
 
-                    if (!inverseSchemaCatalog)
-                        rs = meta.getTables(null, getName(), "%", types);
+
+
+
 
                     // [#2760] MySQL JDBC confuses "catalog" and "schema"
-                    else
+                    if (inverseSchemaCatalog)
                         rs = meta.getTables(getName(), null, "%", types);
+
+                    else
+                        rs = meta.getTables(null, getName(), "%", types);
 
                     return dsl().fetch(
                         rs,
@@ -408,12 +420,26 @@ final class MetaImpl extends AbstractMeta {
                 String catalog = table.get(0, String.class);
                 String schema = table.get(1, String.class);
                 String name = table.get(2, String.class);
+                String type = table.get(3, String.class);
 
-                // [#2760] MySQL JDBC confuses "catalog" and "schema"
-                result.add(new MetaTable(name, this, getColumns(
-                    inverseSchemaCatalog ? catalog : schema,
-                    name
-                )));
+                // "TABLE","VIEW", "SYSTEM TABLE", "GLOBAL TEMPORARY","LOCAL TEMPORARY", "ALIAS", "SYNONYM".
+                TableType tableType =
+                      "VIEW".equals(type)
+                    ? TableType.VIEW
+                    : "SYSTEM_VIEW".equals(type)
+                    ? TableType.VIEW
+                    : "GLOBAL TEMPORARY".equals(type)
+                    ? TableType.TEMPORARY
+                    : "LOCAL TEMPORARY".equals(type)
+                    ? TableType.TEMPORARY
+                    : "TEMPORARY".equals(type)
+                    ? TableType.TEMPORARY
+                    : "MATERIALIZED VIEW".equals(type)
+                    ? TableType.MATERIALIZED_VIEW
+                    : TableType.TABLE;
+
+
+                result.add(new MetaTable(name, this, getColumns(catalog, schema, name), tableType));
 
 //              TODO: Find a more efficient way to do this
 //              Result<Record> pkColumns = executor.fetch(meta().getPrimaryKeys(catalog, schema, name))
@@ -426,50 +452,52 @@ final class MetaImpl extends AbstractMeta {
         }
 
         @SuppressWarnings("unchecked")
-        private final Result<Record> getColumns(String schema, String table) {
+        private final Result<Record> getColumns(String catalog, String schema, String table) {
 
             // SQLite JDBC's DatabaseMetaData.getColumns() can only return a single
             // table's columns
-            if (columnCache == null && configuration.family() != SQLITE) {
-                Result<Record> columns = getColumns0(schema, "%");
+            if (columnCache == null && family() != SQLITE) {
+                Result<Record> columns = getColumns0(catalog, schema, "%");
 
                 Field<String> tableCat   = (Field<String>) columns.field(0); // TABLE_CAT
                 Field<String> tableSchem = (Field<String>) columns.field(1); // TABLE_SCHEM
                 Field<String> tableName  = (Field<String>) columns.field(2); // TABLE_NAME
 
-                Map<Record, Result<Record>> groups =
-                columns.intoGroups(new Field[] {
-                    inverseSchemaCatalog ? tableCat : tableSchem,
-                    tableName
-                });
-
+                Map<Record, Result<Record>> groups = columns.intoGroups(new Field[] { tableCat, tableSchem, tableName });
                 columnCache = new LinkedHashMap<>();
 
                 for (Entry<Record, Result<Record>> entry : groups.entrySet()) {
                     Record key = entry.getKey();
                     Result<Record> value = entry.getValue();
-                    columnCache.put(name(key.get(inverseSchemaCatalog ? tableCat : tableSchem), key.get(tableName)), value);
+                    columnCache.put(name(key.get(tableCat), key.get(tableSchem), key.get(tableName)), value);
                 }
             }
 
             if (columnCache != null)
-                return columnCache.get(name(schema, table));
+                return columnCache.get(name(catalog, schema, table));
             else
-                return getColumns0(schema, table);
+                return getColumns0(catalog, schema, table);
         }
 
-        private final Result<Record> getColumns0(final String schema, final String table) {
+        private final Result<Record> getColumns0(final String catalog, final String schema, final String table) {
             return meta(new MetaFunction() {
                 @Override
                 public Result<Record> run(DatabaseMetaData meta) throws SQLException {
                     ResultSet rs;
 
-                    if (!inverseSchemaCatalog)
+                    // [#2760] MySQL JDBC confuses "catalog" and "schema"
+                    if (inverseSchemaCatalog)
+                        rs = meta.getColumns(catalog, null, table, "%");
+
+
+
+
+
+
+
+                    else
                         rs = meta.getColumns(null, schema, table, "%");
 
-                    // [#2760] MySQL JDBC confuses "catalog" and "schema"
-                    else
-                        rs = meta.getColumns(schema, null, table, "%");
 
                     // Work around a bug in the SQL Server JDBC driver by
                     // coercing data types to the expected types
@@ -533,7 +561,7 @@ final class MetaImpl extends AbstractMeta {
         String.class,  // SCOPE_SCHEMA
 
         String.class,  // SCOPE_TABLE
-        short.class,   // SOURCE_DATA_TYPE
+        String.class,  // SOURCE_DATA_TYPE
         String.class   // IS_AUTOINCREMENT
     };
 
@@ -544,8 +572,8 @@ final class MetaImpl extends AbstractMeta {
          */
         private static final long serialVersionUID = 4843841667753000233L;
 
-        MetaTable(String name, Schema schema, Result<Record> columns) {
-            super(name, schema);
+        MetaTable(String name, Schema schema, Result<Record> columns, TableType tableType) {
+            super(DSL.name(name), schema, null, null, null, null, null, TableOptions.of(tableType));
 
             // Possible scenarios for columns being null:
             // - The "table" is in fact a SYNONYM
@@ -571,12 +599,18 @@ final class MetaImpl extends AbstractMeta {
                 public Result<Record> run(DatabaseMetaData meta) throws SQLException {
                     ResultSet rs;
 
-                    if (!inverseSchemaCatalog)
-                        rs = meta.getIndexInfo(null, schema, getName(), false, true);
-
                     // [#2760] MySQL JDBC confuses "catalog" and "schema"
-                    else
+                    if (inverseSchemaCatalog)
                         rs = meta.getIndexInfo(schema, null, getName(), false, true);
+
+
+
+
+
+
+
+                    else
+                        rs = meta.getIndexInfo(null, schema, getName(), false, true);
 
                     return dsl().fetch(
                         rs,
@@ -610,7 +644,6 @@ final class MetaImpl extends AbstractMeta {
 
         @Override
         public final UniqueKey<Record> getPrimaryKey() {
-            SQLDialect family = configuration.family();
 
 
 
@@ -623,12 +656,18 @@ final class MetaImpl extends AbstractMeta {
                 public Result<Record> run(DatabaseMetaData meta) throws SQLException {
                     ResultSet rs;
 
-                    if (!inverseSchemaCatalog)
-                        rs = meta.getPrimaryKeys(null, schema, getName());
-
                     // [#2760] MySQL JDBC confuses "catalog" and "schema"
-                    else
+                    if (inverseSchemaCatalog)
                         rs = meta.getPrimaryKeys(schema, null, getName());
+
+
+
+
+
+
+
+                    else
+                        rs = meta.getPrimaryKeys(null, schema, getName());
 
                     return dsl().fetch(
                         rs,
@@ -765,7 +804,7 @@ final class MetaImpl extends AbstractMeta {
                     f[i] = (TableField<Record, ?>) field(name);
 
                     // [#5097] Work around a bug in the Xerial JDBC driver for SQLite
-                    if (f[i] == null && configuration.family() == SQLITE)
+                    if (f[i] == null && family() == SQLITE)
 
                         // [#2656] Use native support for case-insensitive column
                         //         lookup, once this is implemented
@@ -841,10 +880,15 @@ final class MetaImpl extends AbstractMeta {
                     ? column.get(22, boolean.class)                      // IS_AUTOINCREMENT
                     : false;
 
+
+
+
+
+
                 // TODO: Exception handling should be moved inside SQLDataType
                 DataType type = null;
                 try {
-                    type = DefaultDataType.getDataType(configuration.family(), typeName, precision, scale);
+                    type = DefaultDataType.getDataType(family(), typeName, precision, scale);
 
                     // JDBC doesn't distinguish between precision and length
                     type = type.precision(precision, scale);
@@ -859,11 +903,11 @@ final class MetaImpl extends AbstractMeta {
                         try {
 
                             // [#7194] Some databases report all default values as expressions, not as values
-                            if (EXPRESSION_COLUMN_DEFAULT.contains(configuration.family()))
+                            if (EXPRESSION_COLUMN_DEFAULT.contains(family()))
                                 type = type.defaultValue(DSL.field(defaultValue, type));
 
                             // [#5574] MySQL mixes constant value expressions with other column expressions here
-                            else if (CURRENT_TIMESTAMP_COLUMN_DEFAULT.contains(configuration.family()) && "CURRENT_TIMESTAMP".equalsIgnoreCase(defaultValue))
+                            else if (CURRENT_TIMESTAMP_COLUMN_DEFAULT.contains(family()) && "CURRENT_TIMESTAMP".equalsIgnoreCase(defaultValue))
                                 type = type.defaultValue(DSL.field(defaultValue, type));
                             else
                                 type = type.defaultValue(DSL.inline(defaultValue, type));

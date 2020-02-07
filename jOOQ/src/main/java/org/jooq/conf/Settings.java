@@ -67,6 +67,12 @@ public class Settings
     protected RenderFormatting renderFormatting;
     @XmlElement(defaultValue = "DEFAULT")
     @XmlSchemaType(name = "string")
+    protected RenderOptionalKeyword renderOptionalAsKeywordForTableAliases = RenderOptionalKeyword.DEFAULT;
+    @XmlElement(defaultValue = "DEFAULT")
+    @XmlSchemaType(name = "string")
+    protected RenderOptionalKeyword renderOptionalAsKeywordForFieldAliases = RenderOptionalKeyword.DEFAULT;
+    @XmlElement(defaultValue = "DEFAULT")
+    @XmlSchemaType(name = "string")
     protected RenderOptionalKeyword renderOptionalInnerKeyword = RenderOptionalKeyword.DEFAULT;
     @XmlElement(defaultValue = "DEFAULT")
     @XmlSchemaType(name = "string")
@@ -201,6 +207,8 @@ public class Settings
     @XmlJavaTypeAdapter(LocaleAdapter.class)
     protected Locale interpreterLocale;
     @XmlElement(defaultValue = "false")
+    protected Boolean interpreterDelayForeignKeyDeclarations = false;
+    @XmlElement(defaultValue = "false")
     protected Boolean migrationAllowsUndo = false;
     @XmlElement(defaultValue = "false")
     protected Boolean migrationRevertUntracked = false;
@@ -221,6 +229,8 @@ public class Settings
     @XmlElement(defaultValue = "OFF")
     @XmlSchemaType(name = "string")
     protected ParseWithMetaLookups parseWithMetaLookups = ParseWithMetaLookups.OFF;
+    @XmlElement(defaultValue = "false")
+    protected Boolean parseSetCommands = false;
     @XmlElement(defaultValue = "IGNORE")
     @XmlSchemaType(name = "string")
     protected ParseUnsupportedSyntax parseUnsupportedSyntax = ParseUnsupportedSyntax.IGNORE;
@@ -517,6 +527,38 @@ public class Settings
     }
 
     /**
+     * Whether to render the optional <code>AS</code> keyword in table aliases, if it is optional in the output dialect. This is ignored if the keyword is not supported (e.g. in Oracle)
+     *
+     */
+    public RenderOptionalKeyword getRenderOptionalAsKeywordForTableAliases() {
+        return renderOptionalAsKeywordForTableAliases;
+    }
+
+    /**
+     * Whether to render the optional <code>AS</code> keyword in table aliases, if it is optional in the output dialect. This is ignored if the keyword is not supported (e.g. in Oracle)
+     *
+     */
+    public void setRenderOptionalAsKeywordForTableAliases(RenderOptionalKeyword value) {
+        this.renderOptionalAsKeywordForTableAliases = value;
+    }
+
+    /**
+     * Whether to render the optional <code>AS</code> keyword in table aliases, if it is optional in the output dialect.
+     *
+     */
+    public RenderOptionalKeyword getRenderOptionalAsKeywordForFieldAliases() {
+        return renderOptionalAsKeywordForFieldAliases;
+    }
+
+    /**
+     * Whether to render the optional <code>AS</code> keyword in table aliases, if it is optional in the output dialect.
+     *
+     */
+    public void setRenderOptionalAsKeywordForFieldAliases(RenderOptionalKeyword value) {
+        this.renderOptionalAsKeywordForFieldAliases = value;
+    }
+
+    /**
      * Whether to render the optional <code>INNER</code> keyword in <code>INNER JOIN</code>, if it is optional in the output dialect.
      *
      */
@@ -716,6 +758,9 @@ public class Settings
      * support. For backwards compatibility with older RDBMS versions, ANSI joins in jOOQ code may be
      * converted to equivalent table lists in generated SQL using this flag.
      * <p>
+     * This flag has a limited implementation that supports inner joins (in most cases) and outer joins
+     * (only for simple comparison predicates).
+     * <p>
      * This feature is available in the commercial distribution only.
      *
      * @return
@@ -747,6 +792,8 @@ public class Settings
      * operators like <code>(+)</code> (Oracle, DB2) or <code>*=</code> (SQL Server) for outer join
      * support. Migrating such join syntax is tedious. The jOOQ parser can parse the old syntax and
      * this flag enables the transformation to ANSI join syntax.
+     * <p>
+     * This flag has not been implemented yet!
      * <p>
      * This feature is available in the commercial distribution only.
      *
@@ -1731,6 +1778,30 @@ public class Settings
     }
 
     /**
+     * Using this flag, the interpreter will be able to delay the addition of foreign key declarations until the end of the interpretation run.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isInterpreterDelayForeignKeyDeclarations() {
+        return interpreterDelayForeignKeyDeclarations;
+    }
+
+    /**
+     * Sets the value of the interpreterDelayForeignKeyDeclarations property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setInterpreterDelayForeignKeyDeclarations(Boolean value) {
+        this.interpreterDelayForeignKeyDeclarations = value;
+    }
+
+    /**
      * Whether migrations are allowed to be executed in inverse order.<p><strong>This is a potentially destructive feature, which should not be turned on in production</strong>. It is useful mostly to quickly switch between branches in a development environment. This feature is available only in commercial distributions.
      *
      * @return
@@ -1880,6 +1951,30 @@ public class Settings
      */
     public void setParseWithMetaLookups(ParseWithMetaLookups value) {
         this.parseWithMetaLookups = value;
+    }
+
+    /**
+     * [#9780] Whether commands of the type <code>SET key = value</code> should be parsed rather than ignored.
+     *
+     * @return
+     *     possible object is
+     *     {@link Boolean }
+     *
+     */
+    public Boolean isParseSetCommands() {
+        return parseSetCommands;
+    }
+
+    /**
+     * Sets the value of the parseSetCommands property.
+     *
+     * @param value
+     *     allowed object is
+     *     {@link Boolean }
+     *
+     */
+    public void setParseSetCommands(Boolean value) {
+        this.parseSetCommands = value;
     }
 
     /**
@@ -2111,6 +2206,24 @@ public class Settings
      */
     public Settings withRenderFormatting(RenderFormatting value) {
         setRenderFormatting(value);
+        return this;
+    }
+
+    /**
+     * Whether to render the optional <code>AS</code> keyword in table aliases, if it is optional in the output dialect. This is ignored if the keyword is not supported (e.g. in Oracle)
+     *
+     */
+    public Settings withRenderOptionalAsKeywordForTableAliases(RenderOptionalKeyword value) {
+        setRenderOptionalAsKeywordForTableAliases(value);
+        return this;
+    }
+
+    /**
+     * Whether to render the optional <code>AS</code> keyword in table aliases, if it is optional in the output dialect.
+     *
+     */
+    public Settings withRenderOptionalAsKeywordForFieldAliases(RenderOptionalKeyword value) {
+        setRenderOptionalAsKeywordForFieldAliases(value);
         return this;
     }
 
@@ -2536,6 +2649,11 @@ public class Settings
         return this;
     }
 
+    public Settings withInterpreterDelayForeignKeyDeclarations(Boolean value) {
+        setInterpreterDelayForeignKeyDeclarations(value);
+        return this;
+    }
+
     public Settings withMigrationAllowsUndo(Boolean value) {
         setMigrationAllowsUndo(value);
         return this;
@@ -2593,6 +2711,11 @@ public class Settings
      */
     public Settings withParseWithMetaLookups(ParseWithMetaLookups value) {
         setParseWithMetaLookups(value);
+        return this;
+    }
+
+    public Settings withParseSetCommands(Boolean value) {
+        setParseSetCommands(value);
         return this;
     }
 
@@ -2693,6 +2816,8 @@ public class Settings
         builder.append("renderLocale", renderLocale);
         builder.append("renderFormatted", renderFormatted);
         builder.append("renderFormatting", renderFormatting);
+        builder.append("renderOptionalAsKeywordForTableAliases", renderOptionalAsKeywordForTableAliases);
+        builder.append("renderOptionalAsKeywordForFieldAliases", renderOptionalAsKeywordForFieldAliases);
         builder.append("renderOptionalInnerKeyword", renderOptionalInnerKeyword);
         builder.append("renderOptionalOuterKeyword", renderOptionalOuterKeyword);
         builder.append("renderScalarSubqueriesForStoredFunctions", renderScalarSubqueriesForStoredFunctions);
@@ -2749,6 +2874,7 @@ public class Settings
         builder.append("interpreterDialect", interpreterDialect);
         builder.append("interpreterNameLookupCaseSensitivity", interpreterNameLookupCaseSensitivity);
         builder.append("interpreterLocale", interpreterLocale);
+        builder.append("interpreterDelayForeignKeyDeclarations", interpreterDelayForeignKeyDeclarations);
         builder.append("migrationAllowsUndo", migrationAllowsUndo);
         builder.append("migrationRevertUntracked", migrationRevertUntracked);
         builder.append("migrationAutoValidation", migrationAutoValidation);
@@ -2757,6 +2883,7 @@ public class Settings
         builder.append("parseLocale", parseLocale);
         builder.append("parseNameCase", parseNameCase);
         builder.append("parseWithMetaLookups", parseWithMetaLookups);
+        builder.append("parseSetCommands", parseSetCommands);
         builder.append("parseUnsupportedSyntax", parseUnsupportedSyntax);
         builder.append("parseUnknownFunctions", parseUnknownFunctions);
         builder.append("parseIgnoreComments", parseIgnoreComments);
@@ -2890,6 +3017,24 @@ public class Settings
             }
         } else {
             if (!renderFormatting.equals(other.renderFormatting)) {
+                return false;
+            }
+        }
+        if (renderOptionalAsKeywordForTableAliases == null) {
+            if (other.renderOptionalAsKeywordForTableAliases!= null) {
+                return false;
+            }
+        } else {
+            if (!renderOptionalAsKeywordForTableAliases.equals(other.renderOptionalAsKeywordForTableAliases)) {
+                return false;
+            }
+        }
+        if (renderOptionalAsKeywordForFieldAliases == null) {
+            if (other.renderOptionalAsKeywordForFieldAliases!= null) {
+                return false;
+            }
+        } else {
+            if (!renderOptionalAsKeywordForFieldAliases.equals(other.renderOptionalAsKeywordForFieldAliases)) {
                 return false;
             }
         }
@@ -3397,6 +3542,15 @@ public class Settings
                 return false;
             }
         }
+        if (interpreterDelayForeignKeyDeclarations == null) {
+            if (other.interpreterDelayForeignKeyDeclarations!= null) {
+                return false;
+            }
+        } else {
+            if (!interpreterDelayForeignKeyDeclarations.equals(other.interpreterDelayForeignKeyDeclarations)) {
+                return false;
+            }
+        }
         if (migrationAllowsUndo == null) {
             if (other.migrationAllowsUndo!= null) {
                 return false;
@@ -3466,6 +3620,15 @@ public class Settings
             }
         } else {
             if (!parseWithMetaLookups.equals(other.parseWithMetaLookups)) {
+                return false;
+            }
+        }
+        if (parseSetCommands == null) {
+            if (other.parseSetCommands!= null) {
+                return false;
+            }
+        } else {
+            if (!parseSetCommands.equals(other.parseSetCommands)) {
                 return false;
             }
         }
@@ -3551,6 +3714,8 @@ public class Settings
         result = ((prime*result)+((renderLocale == null)? 0 :renderLocale.hashCode()));
         result = ((prime*result)+((renderFormatted == null)? 0 :renderFormatted.hashCode()));
         result = ((prime*result)+((renderFormatting == null)? 0 :renderFormatting.hashCode()));
+        result = ((prime*result)+((renderOptionalAsKeywordForTableAliases == null)? 0 :renderOptionalAsKeywordForTableAliases.hashCode()));
+        result = ((prime*result)+((renderOptionalAsKeywordForFieldAliases == null)? 0 :renderOptionalAsKeywordForFieldAliases.hashCode()));
         result = ((prime*result)+((renderOptionalInnerKeyword == null)? 0 :renderOptionalInnerKeyword.hashCode()));
         result = ((prime*result)+((renderOptionalOuterKeyword == null)? 0 :renderOptionalOuterKeyword.hashCode()));
         result = ((prime*result)+((renderScalarSubqueriesForStoredFunctions == null)? 0 :renderScalarSubqueriesForStoredFunctions.hashCode()));
@@ -3607,6 +3772,7 @@ public class Settings
         result = ((prime*result)+((interpreterDialect == null)? 0 :interpreterDialect.hashCode()));
         result = ((prime*result)+((interpreterNameLookupCaseSensitivity == null)? 0 :interpreterNameLookupCaseSensitivity.hashCode()));
         result = ((prime*result)+((interpreterLocale == null)? 0 :interpreterLocale.hashCode()));
+        result = ((prime*result)+((interpreterDelayForeignKeyDeclarations == null)? 0 :interpreterDelayForeignKeyDeclarations.hashCode()));
         result = ((prime*result)+((migrationAllowsUndo == null)? 0 :migrationAllowsUndo.hashCode()));
         result = ((prime*result)+((migrationRevertUntracked == null)? 0 :migrationRevertUntracked.hashCode()));
         result = ((prime*result)+((migrationAutoValidation == null)? 0 :migrationAutoValidation.hashCode()));
@@ -3615,6 +3781,7 @@ public class Settings
         result = ((prime*result)+((parseLocale == null)? 0 :parseLocale.hashCode()));
         result = ((prime*result)+((parseNameCase == null)? 0 :parseNameCase.hashCode()));
         result = ((prime*result)+((parseWithMetaLookups == null)? 0 :parseWithMetaLookups.hashCode()));
+        result = ((prime*result)+((parseSetCommands == null)? 0 :parseSetCommands.hashCode()));
         result = ((prime*result)+((parseUnsupportedSyntax == null)? 0 :parseUnsupportedSyntax.hashCode()));
         result = ((prime*result)+((parseUnknownFunctions == null)? 0 :parseUnknownFunctions.hashCode()));
         result = ((prime*result)+((parseIgnoreComments == null)? 0 :parseIgnoreComments.hashCode()));

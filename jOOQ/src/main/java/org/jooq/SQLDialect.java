@@ -192,9 +192,17 @@ public enum SQLDialect {
     /**
      * The MySQL dialect family.
      * <p>
-     * This family behaves like the versioned dialect {@link #MYSQL_8_0}.
+     * This family behaves like the versioned dialect {@link #MYSQL_8_0_19}.
      */
     MYSQL("MySQL", false, true),
+
+
+
+
+
+
+
+
 
 
 
@@ -290,9 +298,17 @@ public enum SQLDialect {
     /**
      * The SQLite dialect family.
      * <p>
-     * This family behaves like the versioned dialect {@link #SQLITE_3_28}.
+     * This family behaves like the versioned dialect {@link #SQLITE_3_30}.
      */
     SQLITE("SQLite", false, true),
+
+
+
+
+
+
+
+
 
 
 
@@ -637,33 +653,57 @@ public enum SQLDialect {
     }
 
     /**
-     * Get a set of supported dialect versions given a dialect version.
+     * Get a set of supported dialect versions and predecessors given a dialect
+     * version.
      * <p>
      * The resulting set of dialects contain all the families and dialect
-     * versions that support the argument dialect.
+     * versions that precede the argument dialect.
+     */
+    public static final Set<SQLDialect> supportedUntil(SQLDialect dialect) {
+        return predecessors(dialect);
+    }
+
+    /**
+     * Get a set of supported dialect versions and predecessors given a dialect
+     * version.
+     * <p>
+     * The resulting set of dialects contain all the families and dialect
+     * versions that precede the argument dialect.
+     */
+    public static final Set<SQLDialect> supportedUntil(SQLDialect... dialects) {
+        return predecessors(dialects);
+    }
+
+    /**
+     * Get a set of supported dialect versions and successors given a dialect
+     * version.
+     * <p>
+     * The resulting set of dialects contain all the families and dialect
+     * versions that support the argument dialect, i.e. that succeed it.
      */
     public static final Set<SQLDialect> supportedBy(SQLDialect dialect) {
         EnumSet<SQLDialect> result = EnumSet.noneOf(SQLDialect.class);
-        addSupported(dialect, result);
+        addSupportedBy(dialect, result);
         return Collections.unmodifiableSet(result);
     }
 
     /**
-     * Get a set of supported dialect versions given a set of dialect versions.
+     * Get a set of supported dialect versions and successors given a set of
+     * dialect versions.
      * <p>
      * The resulting set of dialects contain all the families and dialect
-     * versions that support the argument dialects.
+     * versions that support the argument dialects, i.e. that succeed them.
      */
     public static final Set<SQLDialect> supportedBy(SQLDialect... dialects) {
         EnumSet<SQLDialect> result = EnumSet.noneOf(SQLDialect.class);
 
         for (SQLDialect dialect : dialects)
-            addSupported(dialect, result);
+            addSupportedBy(dialect, result);
 
         return Collections.unmodifiableSet(result);
     }
 
-    private static final void addSupported(SQLDialect dialect, EnumSet<SQLDialect> supported) {
+    private static final void addSupportedBy(SQLDialect dialect, EnumSet<SQLDialect> supported) {
         supported.add(dialect);
 
         if (dialect.isFamily())

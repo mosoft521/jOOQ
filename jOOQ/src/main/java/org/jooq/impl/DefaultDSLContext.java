@@ -1330,7 +1330,7 @@ public class DefaultDSLContext extends AbstractScope implements DSLContext, Seri
     @Override
     public Cursor<Record> fetchLazy(ResultSet rs, Field<?>... fields) {
         ExecuteContext ctx = new DefaultExecuteContext(configuration());
-        ExecuteListener listener = ExecuteListeners.get(ctx);
+        ExecuteListener listener = ExecuteListeners.getAndStart(ctx);
 
         ctx.resultSet(rs);
         return new CursorImpl<>(ctx, listener, fields, null, false, true);
@@ -2896,6 +2896,11 @@ public class DefaultDSLContext extends AbstractScope implements DSLContext, Seri
     @Override
     public RowCountQuery setSchema(Schema schema) {
         return new SetSchema(configuration(), schema);
+    }
+
+    @Override
+    public RowCountQuery set(Name name, Param<?> param) {
+        return new SetCommand(configuration(), name, param);
     }
 
     @Override

@@ -52,6 +52,7 @@ final class Keywords {
     static final Keyword K_AFTER                            = keyword("after");
     static final Keyword K_ALIAS                            = keyword("alias");
     static final Keyword K_ALTER                            = keyword("alter");
+    static final Keyword K_ALL                              = keyword("all");
     static final Keyword K_ALTER_COLUMN                     = keyword("alter column");
     static final Keyword K_ALTER_CONSTRAINT                 = keyword("alter constraint");
     static final Keyword K_ALTER_INDEX                      = keyword("alter index");
@@ -95,6 +96,7 @@ final class Keywords {
     static final Keyword K_CONNECT_BY                       = keyword("connect by");
     static final Keyword K_CONSTRAINT                       = keyword("constraint");
     static final Keyword K_CONSTRAINTS                      = keyword("constraints");
+    static final Keyword K_CONTAINED                        = keyword("contained");
     static final Keyword K_CONTINUE                         = keyword("continue");
     static final Keyword K_CONTINUE_IDENTITY                = keyword("continue identity");
     static final Keyword K_CREATE                           = keyword("create");
@@ -165,6 +167,7 @@ final class Keywords {
     static final Keyword K_FIRST                            = keyword("first");
     static final Keyword K_FOLLOWING                        = keyword("following");
     static final Keyword K_FOR                              = keyword("for");
+    static final Keyword K_FOR_PORTION_OF                   = keyword("for portion of");
     static final Keyword K_FOR_SHARE                        = keyword("for share");
     static final Keyword K_FOR_UPDATE                       = keyword("for update");
     static final Keyword K_FORALL                           = keyword("forall");
@@ -268,6 +271,7 @@ final class Keywords {
     static final Keyword K_PARTITION_BY                     = keyword("partition by");
     static final Keyword K_PASSING                          = keyword("passing");
     static final Keyword K_PERCENT                          = keyword("percent");
+    static final Keyword K_PERIOD                           = keyword("period");
     static final Keyword K_PIVOT                            = keyword("pivot");
     static final Keyword K_POSITION                         = keyword("position");
     static final Keyword K_PRECEDING                        = keyword("preceding");
@@ -360,7 +364,7 @@ final class Keywords {
     static final Keyword K_VALUE                            = keyword("value");
     static final Keyword K_VALUES                           = keyword("values");
     static final Keyword K_VARCHAR                          = keyword("varchar");
-    static final Keyword K_VERSIONS_BETWEEN                 = keyword("versions between");
+    static final Keyword K_VERSIONS                         = keyword("versions");
     static final Keyword K_VIEW                             = keyword("view");
     static final Keyword K_WHEN                             = keyword("when");
     static final Keyword K_WHERE                            = keyword("where");

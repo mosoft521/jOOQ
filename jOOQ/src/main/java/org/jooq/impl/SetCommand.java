@@ -37,19 +37,44 @@
  */
 package org.jooq.impl;
 
-import org.jooq.Record;
+import static org.jooq.impl.Keywords.K_SET;
+
+import org.jooq.Configuration;
+import org.jooq.Context;
+import org.jooq.Name;
+import org.jooq.Param;
 
 /**
+ * A <code>SET</code> command.
+ *
  * @author Lukas Eder
- * @author Arnaud Roger
  */
-
-@FunctionalInterface
-
-interface RecordFactory<R extends Record> {
+final class SetCommand extends AbstractRowCountQuery {
 
     /**
-     * Create a new record with a given row type.
+     * Generated UID
      */
-    R newInstance();
+    private static final long serialVersionUID = -6018875346107141474L;
+
+    private final Name        name;
+    private final Param<?>    value;
+
+    SetCommand(Configuration configuration, Name name, Param<?> value) {
+        super(configuration);
+
+        this.name = name;
+        this.value = value;
+    }
+
+    final Name     $name()  { return name; }
+    final Param<?> $value() { return value; }
+
+    // ------------------------------------------------------------------------
+    // XXX: QueryPart API
+    // ------------------------------------------------------------------------
+
+    @Override
+    public final void accept(Context<?> ctx) {
+        ctx.visit(K_SET).sql(' ').visit(name).sql(" = ").visit(value);
+    }
 }

@@ -435,6 +435,8 @@ import org.jooq.OrderedAggregateFunctionOfDeferredType;
 import org.jooq.Param;
 import org.jooq.Parameter;
 import org.jooq.Parser;
+// ...
+// ...
 import org.jooq.Privilege;
 // ...
 import org.jooq.QualifiedAsterisk;
@@ -2017,10 +2019,25 @@ final class ParserImpl implements Parser {
             return parseSetSchema(ctx);
         else if (parseKeywordIf(ctx, "SEARCH_PATH"))
             return parseSetSearchPath(ctx);
+        else
+            return parseSetCommand(ctx);
+    }
+
+    private static final Query parseSetCommand(ParserContext ctx) {
+        if (TRUE.equals(ctx.settings().isParseSetCommands())) {
+            Name name = parseIdentifier(ctx);
+
+            // TODO: [#9780] Are there any possible syntaxes and data types?
+            parseIf(ctx, '=');
+            Object value = parseSignedIntegerIf(ctx);
+            return ctx.dsl.set(name, value != null ? inline(value) : inline(parseStringLiteral(ctx)));
+        }
 
         // There are many SET commands in programs like sqlplus, which we'll simply ignore
-        parseUntilEOL(ctx);
-        return IGNORE_NO_DELIMITER;
+        else {
+            parseUntilEOL(ctx);
+            return IGNORE_NO_DELIMITER;
+        }
     }
 
     private static final Query parseSetCatalog(ParserContext ctx) {
@@ -4921,6 +4938,45 @@ final class ParserImpl implements Parser {
         }
 
         if (parseKeywordIf(ctx, "VERSIONS") && ctx.requireProEdition()) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        }
+        else if (peekKeyword(ctx, "FOR")
+            && !peekKeyword(ctx, "FOR KEY SHARE")
+            && !peekKeyword(ctx, "FOR NO KEY UPDATE")
+            && !peekKeyword(ctx, "FOR SHARE")
+            && !peekKeyword(ctx, "FOR UPDATE")
+            && parseKeyword(ctx, "FOR") && ctx.requireProEdition()) {
+
+
+
 
 
 

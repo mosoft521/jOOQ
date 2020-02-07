@@ -37,6 +37,7 @@
  */
 package org.jooq.impl;
 
+import static java.lang.Boolean.TRUE;
 import static org.jooq.Name.Quoted.QUOTED;
 import static org.jooq.conf.SettingsTools.interpreterLocale;
 import static org.jooq.impl.AbstractName.NO_NAME;
@@ -54,8 +55,10 @@ import static org.jooq.impl.Tools.reverseIterable;
 import static org.jooq.tools.StringUtils.defaultIfNull;
 
 import java.util.AbstractList;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -99,6 +102,7 @@ import org.jooq.conf.InterpreterSearchSchema;
 import org.jooq.exception.DataAccessException;
 import org.jooq.exception.DataDefinitionException;
 import org.jooq.impl.ConstraintImpl.Action;
+import org.jooq.tools.Convert;
 import org.jooq.tools.JooqLogger;
 
 @SuppressWarnings("serial")
@@ -113,6 +117,8 @@ final class Interpreter {
     private final MutableCatalog                                 defaultCatalog;
     private final MutableSchema                                  defaultSchema;
     private MutableSchema                                        currentSchema;
+    private boolean                                              delayForeignKeyDeclarations;
+    private final Deque<DelayedForeignKey>                       delayedForeignKeyDeclarations;
 
     // Caches
     private final Map<Name, MutableCatalog.InterpretedCatalog>   interpretedCatalogs    = new HashMap<>();
@@ -125,6 +131,8 @@ final class Interpreter {
 
     Interpreter(Configuration configuration) {
         this.configuration = configuration;
+        this.delayForeignKeyDeclarations = TRUE.equals(configuration.settings().isInterpreterDelayForeignKeyDeclarations());
+        this.delayedForeignKeyDeclarations = new ArrayDeque<>();
         this.caseSensitivity = caseSensitivity(configuration);
         this.locale = interpreterLocale(configuration.settings());
         this.defaultCatalog = new MutableCatalog(NO_NAME);
@@ -133,6 +141,8 @@ final class Interpreter {
     }
 
     final Meta meta() {
+        applyDelayedForeignKeys();
+
         return new AbstractMeta(configuration) {
             private static final long serialVersionUID = 2052806256506059701L;
 
@@ -215,6 +225,9 @@ final class Interpreter {
             ;
         else if (query instanceof Merge)
             ;
+
+        else if (query instanceof SetCommand)
+            accept0((SetCommand) query);
 
         else
             throw unsupportedQuery(query);
@@ -308,6 +321,39 @@ final class Interpreter {
     }
 
     private final void addForeignKey(MutableSchema schema, MutableTable mt, ConstraintImpl impl) {
+        if (delayForeignKeyDeclarations)
+            delayForeignKey(schema, mt, impl);
+        else
+            addForeignKey0(schema, mt, impl);
+    }
+
+    private static class DelayedForeignKey {
+        final MutableSchema schema;
+        final MutableTable table;
+        final ConstraintImpl constraint;
+
+        DelayedForeignKey(MutableSchema schema, MutableTable mt, ConstraintImpl constraint) {
+            this.schema = schema;
+            this.table = mt;
+            this.constraint = constraint;
+        }
+    }
+
+    private final void delayForeignKey(MutableSchema schema, MutableTable mt, ConstraintImpl impl) {
+        delayedForeignKeyDeclarations.add(new DelayedForeignKey(schema, mt, impl));
+    }
+
+    private final void applyDelayedForeignKeys() {
+        Iterator<DelayedForeignKey> it = delayedForeignKeyDeclarations.iterator();
+
+        while (it.hasNext()) {
+            DelayedForeignKey key = it.next();
+            addForeignKey0(key.schema, key.table, key.constraint);
+            it.remove();
+        }
+    }
+
+    private final void addForeignKey0(MutableSchema schema, MutableTable mt, ConstraintImpl impl) {
         MutableTable mrf = schema.table(impl.$referencesTable());
         MutableUniqueKey mu = null;
 
@@ -612,6 +658,16 @@ final class Interpreter {
                             break dropConstraint;
                         }
                     }
+                }
+            }
+
+            Iterator<DelayedForeignKey> it = delayedForeignKeyDeclarations.iterator();
+            while (it.hasNext()) {
+                DelayedForeignKey key = it.next();
+
+                if (existing.equals(key.table) && key.constraint.getUnqualifiedName().equals(impl.getUnqualifiedName())) {
+                    it.remove();
+                    break dropConstraint;
                 }
             }
 
@@ -949,6 +1005,17 @@ final class Interpreter {
             throw schemaNotExists(query.$schema());
 
         currentSchema = schema;
+    }
+
+    private final void accept0(SetCommand query) {
+        if ("foreign_key_checks".equals(query.$name().last().toLowerCase(locale))) {
+            delayForeignKeyDeclarations = !Convert.convert(query.$value().getValue(), boolean.class);
+
+            if (!delayForeignKeyDeclarations)
+                applyDelayedForeignKeys();
+        }
+        else
+            throw unsupportedQuery(query);
     }
 
     // -------------------------------------------------------------------------

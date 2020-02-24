@@ -104,6 +104,7 @@ import org.jooq.tools.JooqLogger;
 import org.jooq.tools.StopWatch;
 import org.jooq.tools.StringUtils;
 import org.jooq.tools.csv.CSVReader;
+import org.jooq.tools.jdbc.JDBCUtils;
 
 /**
  * A base implementation for all types of databases.
@@ -161,11 +162,11 @@ public abstract class AbstractDatabase implements Database {
     private boolean                                                          javaTimeTypes                        = true;
     private List<CatalogMappingType>                                         configuredCatalogs                   = new ArrayList<>();
     private List<SchemaMappingType>                                          configuredSchemata                   = new ArrayList<>();
-    private List<CustomType>                                                 configuredCustomTypes;
-    private List<EnumType>                                                   configuredEnumTypes;
-    private List<ForcedType>                                                 configuredForcedTypes;
+    private List<CustomType>                                                 configuredCustomTypes                = new ArrayList<>();
+    private List<EnumType>                                                   configuredEnumTypes                  = new ArrayList<>();
+    private List<ForcedType>                                                 configuredForcedTypes                = new ArrayList<>();
     private Set<ForcedType>                                                  unusedForcedTypes;
-    private List<Embeddable>                                                 configuredEmbeddables;
+    private List<Embeddable>                                                 configuredEmbeddables                = new ArrayList<>();
     private SchemaVersionProvider                                            schemaVersionProvider;
     private CatalogVersionProvider                                           catalogVersionProvider;
     private Comparator<Definition>                                           orderProvider;
@@ -271,11 +272,20 @@ public abstract class AbstractDatabase implements Database {
 
         try {
             configuration = create0().configuration();
+
+
+
+
+
+
+
+
+
         }
 
         // [#6226] This is mostly due to a wrong Maven groupId
         catch (NoSuchFieldError e) {
-            log.error("NoSuchFieldError may happen when the jOOQ Open Source Edition (Maven groupId 'org.jooq') is used with a commercial SQLDialect. Use an appropriate groupId instead: 'org.jooq.trial', 'org.jooq.pro', 'org.jooq.pro-java-6', or 'org.jooq.pro-java-8'. See also: https://www.jooq.org/doc/latest/manual/getting-started/tutorials/jooq-in-7-steps/jooq-in-7-steps-step1/");
+            log.error("NoSuchFieldError may happen when the jOOQ Open Source Edition (Maven groupId 'org.jooq') is used with a commercial SQLDialect. Use an appropriate groupId instead: 'org.jooq.trial', 'org.jooq.trial-java-6', 'org.jooq.trial-java-8', 'org.jooq.pro', 'org.jooq.pro-java-6', or 'org.jooq.pro-java-8'. See also: https://www.jooq.org/doc/latest/manual/getting-started/tutorials/jooq-in-7-steps/jooq-in-7-steps-step1/");
             throw e;
         }
 
@@ -1191,9 +1201,9 @@ public abstract class AbstractDatabase implements Database {
 
     @Override
     public final String[] getSyntheticIdentities() {
-        if (syntheticIdentities == null) {
+        if (syntheticIdentities == null)
             syntheticIdentities = new String[0];
-        }
+
         return syntheticIdentities;
     }
 
@@ -1204,6 +1214,9 @@ public abstract class AbstractDatabase implements Database {
 
     @Override
     public final List<EnumType> getConfiguredEnumTypes() {
+        if (configuredEnumTypes == null)
+            configuredEnumTypes = new ArrayList<>();
+
         return configuredEnumTypes;
     }
 
@@ -1219,9 +1232,8 @@ public abstract class AbstractDatabase implements Database {
     @Override
     @Deprecated
     public final List<CustomType> getConfiguredCustomTypes() {
-        if (configuredCustomTypes == null) {
+        if (configuredCustomTypes == null)
             configuredCustomTypes = new ArrayList<>();
-        }
 
         return configuredCustomTypes;
     }
@@ -1234,7 +1246,7 @@ public abstract class AbstractDatabase implements Database {
         if (typeName == null)
             return null;
 
-        Iterator<CustomType> it1 = configuredCustomTypes.iterator();
+        Iterator<CustomType> it1 = getConfiguredCustomTypes().iterator();
 
         while (it1.hasNext()) {
             CustomType type = it1.next();
@@ -1649,9 +1661,9 @@ public abstract class AbstractDatabase implements Database {
     }
 
     private final List<EnumDefinition> getConfiguredEnums() {
-        List<EnumDefinition> result = new ArrayList<>(configuredCustomTypes.size());
+        List<EnumDefinition> result = new ArrayList<>(getConfiguredEnumTypes().size());
 
-        for (EnumType enumType : configuredEnumTypes) {
+        for (EnumType enumType : getConfiguredEnumTypes()) {
             String name = enumType.getName();
             DefaultEnumDefinition e = new DefaultEnumDefinition(getSchemata().get(0), name, null, true);
 

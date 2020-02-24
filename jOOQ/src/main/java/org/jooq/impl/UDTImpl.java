@@ -119,10 +119,9 @@ public class UDTImpl<R extends UDTRecord<R>> extends AbstractNamed implements UD
 
 
 
-    @SuppressWarnings({ "rawtypes" })
     @Override
     public final Row fieldsRow() {
-        return new RowImpl(fields);
+        return Tools.row0(fields);
     }
 
 
@@ -207,7 +206,7 @@ public class UDTImpl<R extends UDTRecord<R>> extends AbstractNamed implements UD
 
     @Override
     public final boolean isSQLUsable() {
-        return true;
+        return true ;
     }
 
     @Override

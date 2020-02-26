@@ -58,6 +58,8 @@ import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
+import liquibase.resource.ClassLoaderResourceAccessor;
+import liquibase.resource.CompositeResourceAccessor;
 import liquibase.resource.FileSystemResourceAccessor;
 
 /**
@@ -77,6 +79,8 @@ public class LiquibaseDatabase extends AbstractInterpretingDatabase {
     private static final JooqLogger          log = JooqLogger.getLogger(LiquibaseDatabase.class);
     private static final Map<String, Method> SETTERS;
     private boolean                          includeLiquibaseTables;
+    private String                           databaseChangeLogTableName;
+    private String                           databaseChangeLogLockTableName;
 
     static {
         SETTERS = new HashMap<>();
@@ -105,6 +109,7 @@ public class LiquibaseDatabase extends AbstractInterpretingDatabase {
         }
 
         Database database = DatabaseFactory.getInstance().findCorrectDatabaseImplementation(new JdbcConnection(connection()));
+        String contexts = "";
 
         // [#9514] Forward all database.xyz properties to matching Liquibase
         //         Database.setXyz() configuration setter calls
@@ -123,10 +128,32 @@ public class LiquibaseDatabase extends AbstractInterpretingDatabase {
                     log.warn("Configuration error", e.getMessage(), e);
                 }
             }
+
+            // [#9872] Some changeLogParameters can also be passed along
+            else if (key.startsWith("changeLogParameters.")) {
+                String property = key.substring("changeLogParameters.".length());
+
+                if ("contexts".equals(property))
+                    contexts = "" + entry.getValue();
+            }
         }
 
-        Liquibase liquibase = new Liquibase(scripts, new FileSystemResourceAccessor(), database);
-        liquibase.update("");
+        // Retrieve changeLog table names as they might be overridden by configuration setters
+        databaseChangeLogTableName = database.getDatabaseChangeLogTableName();
+        databaseChangeLogLockTableName = database.getDatabaseChangeLogLockTableName();
+
+        // [#9866] Allow for loading included files from the classpath or using absolute paths.
+        Liquibase liquibase = new Liquibase(
+            scripts,
+            new CompositeResourceAccessor(
+                new FileSystemResourceAccessor(),
+                new ClassLoaderResourceAccessor(),
+                new ClassLoaderResourceAccessor(Thread.currentThread().getContextClassLoader())
+            ),
+            database
+        );
+
+        liquibase.update(contexts);
     }
 
     @Override
@@ -134,7 +161,7 @@ public class LiquibaseDatabase extends AbstractInterpretingDatabase {
         List<TableDefinition> result = new ArrayList<>(super.getTables0());
 
         if (!includeLiquibaseTables) {
-            List<String> liquibaseTables = Arrays.asList("DATABASECHANGELOG", "DATABASECHANGELOGLOCK");
+            List<String> liquibaseTables = Arrays.asList(databaseChangeLogTableName, databaseChangeLogLockTableName);
 
             Iterator<TableDefinition> it = result.iterator();
             while (it.hasNext())

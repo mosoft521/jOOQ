@@ -45,6 +45,7 @@ import static java.lang.Boolean.TRUE;
 // ...
 import static org.jooq.SQLDialect.CUBRID;
 // ...
+// ...
 import static org.jooq.SQLDialect.H2;
 import static org.jooq.SQLDialect.HSQLDB;
 import static org.jooq.SQLDialect.MARIADB;
@@ -56,6 +57,7 @@ import static org.jooq.SQLDialect.SQLITE;
 // ...
 // ...
 // ...
+import static org.jooq.impl.DSL.case_;
 import static org.jooq.impl.DSL.choose;
 import static org.jooq.impl.DSL.condition;
 import static org.jooq.impl.DSL.inline;
@@ -63,6 +65,7 @@ import static org.jooq.impl.DSL.mode;
 import static org.jooq.impl.DSL.name;
 import static org.jooq.impl.DSL.one;
 import static org.jooq.impl.DSL.percentileCont;
+import static org.jooq.impl.DSL.rank;
 import static org.jooq.impl.DSL.when;
 import static org.jooq.impl.DSL.zero;
 import static org.jooq.impl.Keywords.F_CONCAT;
@@ -89,9 +92,11 @@ import static org.jooq.impl.Keywords.K_WITHIN_GROUP;
 import static org.jooq.impl.SQLDataType.NUMERIC;
 import static org.jooq.impl.SelectQueryImpl.SUPPORT_WINDOW_CLAUSE;
 import static org.jooq.impl.Term.ARRAY_AGG;
+import static org.jooq.impl.Term.CUME_DIST;
 import static org.jooq.impl.Term.LIST_AGG;
 import static org.jooq.impl.Term.MEDIAN;
 import static org.jooq.impl.Term.MODE;
+import static org.jooq.impl.Term.PERCENT_RANK;
 import static org.jooq.impl.Term.PRODUCT;
 import static org.jooq.impl.Term.ROW_NUMBER;
 import static org.jooq.impl.Tools.castIfNeeded;
@@ -159,6 +164,14 @@ class Function<T> extends AbstractField<T> implements
     private static final Set<SQLDialect>   SUPPORT_NO_PARENS_WINDOW_REFERENCE = SQLDialect.supportedBy(MYSQL, POSTGRES);
     private static final Set<SQLDialect>   SUPPORT_FILTER                     = SQLDialect.supportedBy(H2, HSQLDB, POSTGRES, SQLITE);
     private static final Set<SQLDialect>   SUPPORT_DISTINCT_RVE               = SQLDialect.supportedBy(H2, POSTGRES);
+
+
+
+
+
+
+
+
 
     static final Field<Integer>            ASTERISK                           = DSL.field("*", Integer.class);
 
@@ -229,19 +242,36 @@ class Function<T> extends AbstractField<T> implements
 
     @Override
     public /* final */ void accept(Context<?> ctx) {
-        if (term == ARRAY_AGG && SUPPORT_ARRAY_AGG.contains(ctx.family())) {
+        if (term == ARRAY_AGG && SUPPORT_ARRAY_AGG.contains(ctx.dialect())) {
             toSQLGroupConcat(ctx);
             toSQLFilterClause(ctx);
             toSQLOverClause(ctx);
         }
-        else if (term == LIST_AGG && SUPPORT_GROUP_CONCAT.contains(ctx.family())) {
+        else if (term == LIST_AGG && SUPPORT_GROUP_CONCAT.contains(ctx.dialect())) {
             toSQLGroupConcat(ctx);
         }
-        else if (term == LIST_AGG && SUPPORT_STRING_AGG  .contains(ctx.family())) {
+        else if (term == LIST_AGG && SUPPORT_STRING_AGG  .contains(ctx.dialect())) {
             toSQLStringAgg(ctx);
             toSQLFilterClause(ctx);
             toSQLOverClause(ctx);
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -508,7 +538,7 @@ class Function<T> extends AbstractField<T> implements
 
         // [#531] Inline window specifications if the WINDOW clause is not supported
         if (windowName != null) {
-            if (ctx.dialect().supports(SUPPORT_WINDOW_CLAUSE))
+            if (SUPPORT_WINDOW_CLAUSE.contains(ctx.dialect()))
                 return windowName;
 
             QueryPartList<WindowDefinition> windows = (QueryPartList<WindowDefinition>) ctx.data(DATA_WINDOW_DEFINITIONS);
